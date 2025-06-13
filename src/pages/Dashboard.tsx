@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -235,7 +236,7 @@ const Dashboard = () => {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-sm">Response Time</span>
-                  <span className="font-semibold">< 1s</span>
+                  <span className="font-semibold">&lt; 1s</span>
                 </div>
               </CardContent>
             </Card>

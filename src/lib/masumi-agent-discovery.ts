@@ -1,9 +1,8 @@
 // Masumi Agent Discovery and Usage Service
 // This service discovers existing agents on Masumi Preprod and facilitates their usage
 
-const MASUMI_REGISTRY_URL = 'https://registry.masumi.network';
-const MASUMI_PAYMENT_URL = 'https://api.masumi.network';
-const PUBLIC_REGISTRY_TOKEN = 'public-test-key-masumi-registry-c23f3d21';
+// Use proxy endpoint to avoid CORS issues
+const PROXY_URL = '/api/masumi-proxy';
 
 // Types based on Masumi API responses
 export interface MasumiAgent {
@@ -85,20 +84,21 @@ export interface PurchaseRequest {
  */
 export async function discoverAgents(limit = 50): Promise<MasumiAgent[]> {
   try {
-    const response = await fetch(`${MASUMI_REGISTRY_URL}/api/v1/registry-entry`, {
+    const response = await fetch(PROXY_URL, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'token': PUBLIC_REGISTRY_TOKEN
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify({
+        endpoint: 'registry-entry',
         network: 'Preprod',
         limit
       })
     });
 
     if (!response.ok) {
-      throw new Error(`Failed to fetch agents: ${response.status} ${response.statusText}`);
+      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+      throw new Error(`Failed to fetch agents: ${response.status} ${response.statusText} - ${errorData.error || errorData.message || ''}`);
     }
 
     const data = await response.json();
@@ -130,18 +130,20 @@ export async function findSupportAgents(): Promise<MasumiAgent[]> {
  */
 export async function getAgentDetails(agentIdentifier: string): Promise<MasumiAgent | null> {
   try {
-    const response = await fetch(
-      `${MASUMI_REGISTRY_URL}/api/v1/payment-information?agentIdentifier=${agentIdentifier}`,
-      {
-        headers: {
-          'token': PUBLIC_REGISTRY_TOKEN
-        }
-      }
-    );
+    const response = await fetch(PROXY_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        endpoint: `payment-information?agentIdentifier=${agentIdentifier}`
+      })
+    });
 
     if (!response.ok) {
       if (response.status === 404) return null;
-      throw new Error(`Failed to get agent details: ${response.status} ${response.statusText}`);
+      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+      throw new Error(`Failed to get agent details: ${response.status} ${response.statusText} - ${errorData.error || errorData.message || ''}`);
     }
 
     const data = await response.json();
@@ -293,7 +295,9 @@ export async function completePayment(
       inputHash: hashInputData(inputData)
     };
 
-    const response = await fetch(`${MASUMI_PAYMENT_URL}/api/v1/purchase`, {
+    // Note: This would also need to use a proxy for payment API
+    // For now, keeping as-is since it's mostly simulation
+    const response = await fetch(`https://api.masumi.network/api/v1/purchase`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

@@ -193,6 +193,7 @@ export function AgentSelectionModal({ open, onOpenChange, onAgentSelected }: Age
       let paymentIdentifier: string | undefined;
       let lovelaceAmount: string | undefined;
 
+      // For hackathon, always use simulation if lucid is not available
       if (needsPayment && lucid) {
         // Use real transaction
         try {
@@ -272,7 +273,7 @@ export function AgentSelectionModal({ open, onOpenChange, onAgentSelected }: Age
       } else if (needsPayment) {
         // Show warning about payment implementation
         toast.info(
-          "Note: Real wallet transactions require Lucid Evolution. Using payment simulation for testing.",
+          "Running in Demo Mode: Payments will be simulated for the hackathon.",
           { duration: 5000 }
         );
       }

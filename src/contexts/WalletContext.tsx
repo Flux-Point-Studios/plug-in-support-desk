@@ -41,10 +41,14 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   const [availableWallets, setAvailableWallets] = useState<WalletInfo[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  // Initialize Lucid on mount
+  // Initialize Lucid on mount - DISABLED FOR HACKATHON DUE TO BUILD ISSUES
   useEffect(() => {
     const initLucid = async () => {
       try {
+        console.log('Lucid initialization disabled for hackathon - wallet features will use simulation mode');
+        // COMMENTED OUT DUE TO PRODUCTION BUILD ISSUES WITH LUCID-EVOLUTION
+        // The library has class inheritance issues in Vite production builds
+        /*
         console.log('Initializing Lucid with:', {
           url: BLOCKFROST_URL,
           network: NETWORK,
@@ -60,9 +64,13 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         );
         setLucid(lucidInstance);
         console.log('Lucid initialized successfully');
+        */
+        
+        // For hackathon demo, we'll use simulation mode
+        setError(null);
       } catch (err) {
         console.error("Failed to initialize Lucid:", err);
-        setError("Failed to initialize wallet connection");
+        setError("Wallet features running in simulation mode");
         // Don't let this crash the app - wallet features just won't work
       }
     };
@@ -149,15 +157,39 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   }, []);
 
   const connectWallet = async (walletKey: string) => {
-    if (!lucid) {
-      setError("Wallet system not initialized. Please refresh the page.");
-      return;
-    }
-
     setIsConnecting(true);
     setError(null);
 
     try {
+      // SIMULATION MODE FOR HACKATHON
+      if (!lucid) {
+        console.log("Running in wallet simulation mode for hackathon");
+        
+        // Generate a simulated address for demo
+        const simulatedAddress = `addr_test1_${walletKey}_${Math.random().toString(36).substring(2, 15)}`;
+        
+        setWalletAddress(simulatedAddress);
+        setPaymentKeyHash(simulatedAddress.slice(0, 56));
+        
+        // Check if this is the admin wallet (for demo purposes)
+        if (walletKey === 'admin' || simulatedAddress === ADMIN_WALLET_ADDRESS) {
+          setIsAdmin(true);
+          localStorage.setItem('isAdmin', 'true');
+        }
+        
+        setConnectedWallet(walletKey);
+        localStorage.setItem('walletAddress', simulatedAddress);
+        localStorage.setItem('connectedWallet', walletKey);
+        
+        console.log(`Simulated connection to ${walletKey} wallet`);
+        console.log(`Simulated Address: ${simulatedAddress}`);
+        setError("Demo Mode: Wallet payments will be simulated");
+        
+        setIsConnecting(false);
+        return;
+      }
+
+      // ORIGINAL CODE (kept for reference but won't execute)
       // Check if wallet exists
       const walletApi = window.cardano?.[walletKey];
       if (!walletApi) {
@@ -221,11 +253,24 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   };
 
   const signMessage = async (message: string): Promise<string | null> => {
-    if (!lucid || !walletAddress) {
+    if (!walletAddress) {
       setError("No wallet connected");
       return null;
     }
 
+    // SIMULATION MODE FOR HACKATHON
+    if (!lucid) {
+      console.log("Simulating message signing for hackathon");
+      // Return a simulated signature
+      const simulatedSignature = {
+        signature: `sim_sig_${btoa(message).substring(0, 20)}`,
+        key: walletAddress,
+        message: message
+      };
+      return JSON.stringify(simulatedSignature);
+    }
+
+    // ORIGINAL CODE (kept for reference but won't execute)
     try {
       const signature = await lucid.wallet().signMessage(walletAddress, message);
       // Convert SignedMessage to string representation

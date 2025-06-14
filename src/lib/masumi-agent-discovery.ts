@@ -247,8 +247,11 @@ export async function startAgentJob(
   try {
     const cleanUrl = `${apiBaseUrl}/start_job`.replace(/([^:]\/)\/+/g, "$1");
     
-    // Convert inputData to the array format expected by agents
-    const input_data = Object.entries(inputData).map(([key, value]) => ({ key, value }));
+    // Convert inputData to the format expected by Masumi agents
+    // Each item in the array should be an object with the field ID as key
+    const input_data = Object.entries(inputData).map(([fieldId, value]) => ({
+      [fieldId]: value
+    }));
     
     const jobData = {
       input_data

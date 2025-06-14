@@ -32,3 +32,29 @@ dist-ssr
 
 # Masumi services environment
 masumi-services/.env
+
+# Backup files
+*.bak
+
+# OS generated files
+Thumbs.db
+.DS_Store
+
+# Supabase
+.branches
+.temp
+.hype
+
+# Agent Wrapper sensitive files
+agent-wrapper/registration-response.json
+agent-wrapper/all-agents-response.json
+agent-wrapper/recent-logs.txt
+agent-wrapper/*.log
+
+# Any other sensitive response files
+*-response.json
+*-logs.txt
+*.key
+*.pem
+*.p12
+*.pfx

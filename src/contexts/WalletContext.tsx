@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { Blockfrost, Lucid, type LucidEvolution, Network } from '@lucid-evolution/lucid';
+import type { LucidEvolution, Network } from '@lucid-evolution/lucid';
 
 interface WalletInfo {
   key: string;
@@ -50,6 +50,9 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({ children }) 
           network: NETWORK,
           hasApiKey: !!BLOCKFROST_PROJECT_ID
         });
+        
+        // Dynamic import to avoid initialization errors
+        const { Lucid, Blockfrost } = await import('@lucid-evolution/lucid');
         
         const lucidInstance = await Lucid(
           new Blockfrost(BLOCKFROST_URL, BLOCKFROST_PROJECT_ID),

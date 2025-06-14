@@ -54,9 +54,12 @@ const Index = () => {
           <h1 className="text-5xl md:text-7xl font-bold text-white mb-6 bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
             AI-Powered Support Agents
           </h1>
-          <p className="text-xl text-slate-300 mb-8 max-w-2xl mx-auto">
+          <p className="text-xl text-slate-300 mb-4 max-w-2xl mx-auto">
             Create custom AI support agents trained on your documentation. 
             Provide instant, accurate support to your customers 24/7.
+          </p>
+          <p className="text-lg text-green-400 mb-8 max-w-2xl mx-auto font-semibold">
+            🚀 Try our live demo with 10+ AI agents from the Masumi network!
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Button size="lg" className="bg-blue-600 hover:bg-blue-700" onClick={() => navigate('/dashboard')}>

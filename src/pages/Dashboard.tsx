@@ -163,8 +163,21 @@ const Dashboard = () => {
         
         {/* Dashboard Header */}
         <div className="mb-8">
-          <h1 className="text-4xl font-bold mb-2">AI Agent Dashboard</h1>
-          <p className="text-muted-foreground">Find and activate AI agents from the Masumi network</p>
+          <div className="flex items-center space-x-3">
+            <h1 className="text-4xl font-bold">AI Agent Dashboard</h1>
+            {!walletAddress && (
+              <Badge variant="outline" className="bg-green-600/10 text-green-600 border-green-600/20">
+                <Zap className="h-3 w-3 mr-1" />
+                Demo Mode
+              </Badge>
+            )}
+          </div>
+          <p className="text-muted-foreground mt-2">
+            {walletAddress 
+              ? 'Find and activate AI agents from the Masumi network' 
+              : '🚀 Explore AI agents - Connect wallet to make payments and activate agents'
+            }
+          </p>
         </div>
 
         <div className="grid lg:grid-cols-3 gap-8">

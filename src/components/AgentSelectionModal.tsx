@@ -18,7 +18,9 @@ import {
   Zap,
   Clock,
   Shield,
-  Loader2
+  Loader2,
+  ChevronLeft,
+  ChevronRight
 } from "lucide-react";
 import { toast } from "sonner";
 import { useWallet } from "@/contexts/WalletContextLite";
@@ -40,7 +42,7 @@ interface AgentConfig {
 }
 
 export function AgentSelectionModal({ open, onOpenChange, onAgentSelected }: AgentSelectionModalProps) {
-  const { walletAddress, signTransaction, isAdmin } = useWallet();
+  const { walletAddress, isAdmin } = useWallet();
   const [agents, setAgents] = useState<MasumiAgent[]>([]);
   const [filteredAgents, setFilteredAgents] = useState<MasumiAgent[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -49,6 +51,10 @@ export function AgentSelectionModal({ open, onOpenChange, onAgentSelected }: Age
   const [selectedAgent, setSelectedAgent] = useState<MasumiAgent | null>(null);
   const [isPaymentStep, setIsPaymentStep] = useState(false);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [agentsPerPage] = useState(10);
   
   // Configuration state
   const [businessContext, setBusinessContext] = useState("");
@@ -62,6 +68,7 @@ export function AgentSelectionModal({ open, onOpenChange, onAgentSelected }: Age
 
   useEffect(() => {
     filterAgents();
+    setCurrentPage(1); // Reset to first page when filters change
   }, [agents, searchTerm, showSupportOnly]);
 
   const loadAgents = async () => {
@@ -108,6 +115,12 @@ export function AgentSelectionModal({ open, onOpenChange, onAgentSelected }: Age
 
     setFilteredAgents(filtered);
   };
+
+  // Pagination calculations
+  const totalPages = Math.ceil(filteredAgents.length / agentsPerPage);
+  const indexOfLastAgent = currentPage * agentsPerPage;
+  const indexOfFirstAgent = indexOfLastAgent - agentsPerPage;
+  const currentAgents = filteredAgents.slice(indexOfFirstAgent, indexOfLastAgent);
 
   const getPriceDisplay = (agent: MasumiAgent) => {
     const pricing = agent.AgentPricing?.FixedPricing?.Amounts?.[0];
@@ -211,9 +224,21 @@ export function AgentSelectionModal({ open, onOpenChange, onAgentSelected }: Age
     return 'bg-gray-500';
   };
 
+  const nextPage = () => {
+    if (currentPage < totalPages) {
+      setCurrentPage(currentPage + 1);
+    }
+  };
+
+  const prevPage = () => {
+    if (currentPage > 1) {
+      setCurrentPage(currentPage - 1);
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden">
+      <DialogContent className="max-w-7xl max-h-[95vh] overflow-hidden">
         <DialogHeader>
           <DialogTitle className="flex items-center space-x-2">
             <Bot className="h-5 w-5" />
@@ -230,7 +255,7 @@ export function AgentSelectionModal({ open, onOpenChange, onAgentSelected }: Age
         {!isPaymentStep ? (
           <div className="space-y-4">
             {/* Search and Filter Controls */}
-            <div className="flex space-x-4">
+            <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-4">
               <div className="flex-1">
                 <Label htmlFor="search" className="sr-only">Search agents</Label>
                 <div className="relative">
@@ -262,64 +287,91 @@ export function AgentSelectionModal({ open, onOpenChange, onAgentSelected }: Age
               </Button>
             </div>
 
-            {/* Agent List */}
-            <ScrollArea className="h-96">
+            {/* Agent Grid */}
+            <ScrollArea className="h-[600px]">
               {isLoading ? (
                 <div className="flex items-center justify-center h-32">
                   <Loader2 className="h-6 w-6 animate-spin mr-2" />
                   <span>Discovering agents...</span>
                 </div>
               ) : (
-                <div className="grid gap-3">
-                  {filteredAgents.map((agent, index) => {
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 pr-4">
+                  {currentAgents.map((agent, index) => {
                     const price = getPriceDisplay(agent);
                     return (
-                      <Card key={agent.agentIdentifier || index} className="cursor-pointer hover:bg-accent/50 transition-colors">
+                      <Card key={agent.agentIdentifier || index} className="cursor-pointer hover:bg-accent/50 transition-colors h-fit">
                         <CardHeader className="pb-3">
-                          <div className="flex items-start justify-between">
-                            <div className="space-y-2">
-                              <div className="flex items-center space-x-2">
-                                <CardTitle className="text-base">{agent.name}</CardTitle>
-                                <Badge variant={agent.status === 'Online' ? 'default' : 'secondary'} className="text-xs">
-                                  {agent.status}
-                                </Badge>
-                                <Badge 
-                                  className={`text-xs text-white ${getCapabilityBadgeColor(agent.Capability?.name || '')}`}
-                                >
-                                  {agent.Capability?.name || 'General AI'}
-                                </Badge>
+                          <div className="space-y-3">
+                            <div className="flex items-start justify-between">
+                              <div className="space-y-2 flex-1 mr-4">
+                                <div className="flex items-center space-x-2 flex-wrap">
+                                  <CardTitle className="text-lg leading-tight">{agent.name}</CardTitle>
+                                  <Badge variant={agent.status === 'Online' ? 'default' : 'secondary'} className="text-xs">
+                                    {agent.status}
+                                  </Badge>
+                                  <Badge 
+                                    className={`text-xs text-white ${getCapabilityBadgeColor(agent.Capability?.name || '')}`}
+                                  >
+                                    {agent.Capability?.name || 'General AI'}
+                                  </Badge>
+                                </div>
+                                <CardDescription className="text-sm leading-relaxed">
+                                  {agent.description}
+                                </CardDescription>
                               </div>
-                              <CardDescription className="text-sm">
-                                {agent.description}
-                              </CardDescription>
-                              {agent.Tags && (
-                                <div className="flex flex-wrap gap-1">
-                                  {agent.Tags.slice(0, 4).map((tag, tagIndex) => (
-                                    <Badge key={tagIndex} variant="outline" className="text-xs">
-                                      {tag}
-                                    </Badge>
-                                  ))}
-                                  {agent.Tags.length > 4 && (
-                                    <Badge variant="outline" className="text-xs">
-                                      +{agent.Tags.length - 4} more
-                                    </Badge>
-                                  )}
+                              <div className="text-right space-y-2 flex-shrink-0">
+                                <div className="text-xl font-bold text-primary">
+                                  {price.display}
+                                </div>
+                                <div className="text-xs text-muted-foreground">per query</div>
+                              </div>
+                            </div>
+
+                            {/* Tags */}
+                            {agent.Tags && agent.Tags.length > 0 && (
+                              <div className="flex flex-wrap gap-1">
+                                {agent.Tags.slice(0, 6).map((tag, tagIndex) => (
+                                  <Badge key={tagIndex} variant="outline" className="text-xs">
+                                    {tag}
+                                  </Badge>
+                                ))}
+                                {agent.Tags.length > 6 && (
+                                  <Badge variant="outline" className="text-xs">
+                                    +{agent.Tags.length - 6} more
+                                  </Badge>
+                                )}
+                              </div>
+                            )}
+
+                            {/* Agent Details */}
+                            <div className="space-y-1 text-xs text-muted-foreground border-t pt-2">
+                              {agent.Capability?.version && (
+                                <div className="flex justify-between">
+                                  <span>Version:</span>
+                                  <span>{agent.Capability.version}</span>
                                 </div>
                               )}
-                            </div>
-                            <div className="text-right space-y-2">
-                              <div className="text-lg font-bold text-primary">
-                                {price.display}
+                              {agent.authorName && (
+                                <div className="flex justify-between">
+                                  <span>Author:</span>
+                                  <span>{agent.authorName}</span>
+                                </div>
+                              )}
+                              <div className="flex justify-between">
+                                <span>Network:</span>
+                                <span className="text-orange-500">Cardano Preprod</span>
                               </div>
-                              <Button
-                                size="sm"
-                                onClick={() => handleAgentSelect(agent)}
-                                className="w-full"
-                              >
-                                <Wallet className="h-3 w-3 mr-1" />
-                                Select & Pay
-                              </Button>
                             </div>
+
+                            {/* Select Button */}
+                            <Button
+                              size="sm"
+                              onClick={() => handleAgentSelect(agent)}
+                              className="w-full mt-3"
+                            >
+                              <Wallet className="h-3 w-3 mr-2" />
+                              Select & Pay {price.display}
+                            </Button>
                           </div>
                         </CardHeader>
                       </Card>
@@ -327,7 +379,7 @@ export function AgentSelectionModal({ open, onOpenChange, onAgentSelected }: Age
                   })}
                   
                   {!isLoading && filteredAgents.length === 0 && (
-                    <div className="text-center py-8 text-muted-foreground">
+                    <div className="col-span-full text-center py-8 text-muted-foreground">
                       <AlertCircle className="h-8 w-8 mx-auto mb-2" />
                       <p>No agents found matching your criteria.</p>
                       <p className="text-sm">Try adjusting your search or filters.</p>
@@ -337,11 +389,64 @@ export function AgentSelectionModal({ open, onOpenChange, onAgentSelected }: Age
               )}
             </ScrollArea>
 
-            {/* Stats */}
-            <div className="flex justify-between text-sm text-muted-foreground border-t pt-3">
-              <span>Showing {filteredAgents.length} of {agents.length} agents</span>
-              <span>Network: Masumi Preprod</span>
-            </div>
+            {/* Pagination Controls */}
+            {!isLoading && filteredAgents.length > 0 && (
+              <div className="flex items-center justify-between border-t pt-4">
+                <div className="text-sm text-muted-foreground">
+                  Showing {indexOfFirstAgent + 1}-{Math.min(indexOfLastAgent, filteredAgents.length)} of {filteredAgents.length} agents
+                  <span className="ml-2">• Network: Masumi Preprod</span>
+                </div>
+                
+                {totalPages > 1 && (
+                  <div className="flex items-center space-x-2">
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={prevPage}
+                      disabled={currentPage === 1}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                      Previous
+                    </Button>
+                    <div className="flex items-center space-x-1">
+                      {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+                        let pageNum;
+                        if (totalPages <= 5) {
+                          pageNum = i + 1;
+                        } else if (currentPage <= 3) {
+                          pageNum = i + 1;
+                        } else if (currentPage >= totalPages - 2) {
+                          pageNum = totalPages - 4 + i;
+                        } else {
+                          pageNum = currentPage - 2 + i;
+                        }
+                        
+                        return (
+                          <Button
+                            key={pageNum}
+                            variant={currentPage === pageNum ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => setCurrentPage(pageNum)}
+                            className="w-8 h-8 p-0"
+                          >
+                            {pageNum}
+                          </Button>
+                        );
+                      })}
+                    </div>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={nextPage}
+                      disabled={currentPage === totalPages}
+                    >
+                      Next
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         ) : (
           /* Payment and Configuration Step */

@@ -3,6 +3,7 @@
 
 // Use proxy endpoint to avoid CORS issues
 const PROXY_URL = '/api/masumi-proxy';
+const AGENT_PROXY_URL = '/api/agent-proxy';
 
 // Types based on Masumi API responses
 export interface MasumiAgent {
@@ -77,6 +78,36 @@ export interface PurchaseRequest {
   unlockTime: string;
   externalDisputeUnlockTime: string;
   inputHash: string;
+}
+
+/**
+ * Helper function to make requests through the agent proxy
+ */
+async function proxyAgentRequest(targetUrl: string, method: string = 'GET', data?: any): Promise<any> {
+  try {
+    const response = await fetch(AGENT_PROXY_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        targetUrl,
+        method,
+        data
+      })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: 'Unknown proxy error' }));
+      throw new Error(errorData.message || errorData.error || `Proxy request failed: ${response.status}`);
+    }
+
+    const result = await response.json();
+    return result.data;
+  } catch (error: any) {
+    console.error('Proxy request failed:', error);
+    throw new Error(`Agent communication failed: ${error.message}`);
+  }
 }
 
 /**
@@ -159,16 +190,11 @@ export async function getAgentDetails(agentIdentifier: string): Promise<MasumiAg
  */
 export async function checkAgentAvailability(apiBaseUrl: string): Promise<boolean> {
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+    // Clean up the URL to avoid double slashes
+    const cleanUrl = `${apiBaseUrl}/availability`.replace(/([^:]\/)\/+/g, "$1");
     
-    const response = await fetch(`${apiBaseUrl}/availability`, {
-      method: 'GET',
-      signal: controller.signal
-    });
-    
-    clearTimeout(timeoutId);
-    return response.ok;
+    const result = await proxyAgentRequest(cleanUrl, 'GET');
+    return true; // If no error thrown, agent is available
   } catch (error) {
     console.error('Agent availability check failed:', error);
     return false;
@@ -180,18 +206,9 @@ export async function checkAgentAvailability(apiBaseUrl: string): Promise<boolea
  */
 export async function getAgentInputSchema(apiBaseUrl: string): Promise<AgentInputSchema> {
   try {
-    const response = await fetch(`${apiBaseUrl}/input_schema`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json'
-      }
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to get input schema: ${response.status} ${response.statusText}`);
-    }
-
-    return await response.json();
+    const cleanUrl = `${apiBaseUrl}/input_schema`.replace(/([^:]\/)\/+/g, "$1");
+    const schema = await proxyAgentRequest(cleanUrl, 'GET');
+    return schema;
   } catch (error: any) {
     console.error('Failed to get agent input schema:', error);
     // Return default schema for text-based queries
@@ -219,22 +236,15 @@ export async function startAgentJob(
   inputData: Record<string, string>
 ): Promise<StartJobResponse> {
   try {
-    const response = await fetch(`${apiBaseUrl}/start_job`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        input_data: inputData,
-        identifier_from_purchaser: `job_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`
-      })
-    });
+    const cleanUrl = `${apiBaseUrl}/start_job`.replace(/([^:]\/)\/+/g, "$1");
+    
+    const jobData = {
+      input_data: inputData,
+      identifier_from_purchaser: `job_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`
+    };
 
-    if (!response.ok) {
-      throw new Error(`Failed to start job: ${response.status} ${response.statusText}`);
-    }
-
-    return await response.json();
+    const response = await proxyAgentRequest(cleanUrl, 'POST', jobData);
+    return response;
   } catch (error: any) {
     console.error('Failed to start agent job:', error);
     throw new Error(`Job initiation failed: ${error.message}`);
@@ -328,18 +338,8 @@ export async function pollJobResult(
 ): Promise<string> {
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
-      const response = await fetch(`${apiBaseUrl}/status?job_id=${jobId}`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error(`Status check failed: ${response.status} ${response.statusText}`);
-      }
-
-      const status: JobStatusResponse = await response.json();
+      const cleanUrl = `${apiBaseUrl}/status?job_id=${jobId}`.replace(/([^:]\/)\/+/g, "$1");
+      const status: JobStatusResponse = await proxyAgentRequest(cleanUrl, 'GET');
 
       if (status.status === 'completed') {
         return status.result || 'Job completed successfully';

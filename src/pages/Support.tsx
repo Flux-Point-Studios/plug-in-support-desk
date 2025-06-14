@@ -56,8 +56,8 @@ const Support = () => {
     activatedAt: string;
     paymentReceipt?: any;
   } | null>(null);
-  const [useMasumiAgent, setUseMasumiAgent] = useState(true);
-  const [useRealAI, setUseRealAI] = useState(false);
+  const [useMasumiAgent, setUseMasumiAgent] = useState(false);
+  const [useRealAI, setUseRealAI] = useState(true); // Default to Flux Point AI
   
   // Sentiment tracking
   const [sentimentHistory, setSentimentHistory] = useState<SentimentData[]>([]);

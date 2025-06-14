@@ -52,6 +52,13 @@ export async function sendChatMessage(
   }
 
   try {
+    console.log('Sending chat request to Flux Point AI:', {
+      url: AGENT_API_URL,
+      message: fullMessage.substring(0, 100) + '...', // Log first 100 chars
+      session_id: sessionId,
+      hasApiKey: !!AGENT_API_KEY
+    });
+
     const response = await fetch(AGENT_API_URL, {
       method: 'POST',
       headers: {
@@ -64,20 +71,37 @@ export async function sendChatMessage(
       }),
     });
 
+    console.log('Flux Point API Response:', {
+      status: response.status,
+      statusText: response.statusText,
+      headers: Object.fromEntries(response.headers.entries())
+    });
+
     if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      console.error('Chat API Error:', error);
-      throw new Error(`Chat API error: ${error.message || error.error?.message || response.statusText}`);
+      const errorText = await response.text();
+      let error;
+      try {
+        error = JSON.parse(errorText);
+      } catch {
+        error = { message: errorText };
+      }
+      console.error('Chat API Error:', {
+        status: response.status,
+        error,
+        errorText
+      });
+      throw new Error(`Chat API error (${response.status}): ${error.message || error.error?.message || errorText || response.statusText}`);
     }
 
     const data = await response.json();
+    console.log('Flux Point API Data:', data);
     
     // Extract response content
     const content = data.reply || data.response || data.message || data.content;
     
     if (!content) {
       console.error('Unexpected chat response format:', data);
-      throw new Error('No response from AI');
+      throw new Error('No response from AI - received: ' + JSON.stringify(data));
     }
 
     // Extract sentiment if provided by AI

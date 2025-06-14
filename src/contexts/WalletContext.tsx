@@ -1,0 +1,276 @@
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { Blockfrost, Lucid, type LucidEvolution, Network } from '@lucid-evolution/lucid';
+
+interface WalletInfo {
+  key: string;
+  name: string;
+  icon?: string;
+}
+
+interface WalletContextType {
+  lucid: LucidEvolution | null;
+  walletAddress: string | null;
+  paymentKeyHash: string | null;
+  isAdmin: boolean;
+  isConnecting: boolean;
+  availableWallets: WalletInfo[];
+  connectedWallet: string | null;
+  connectWallet: (walletKey: string) => Promise<void>;
+  disconnectWallet: () => void;
+  signMessage: (message: string) => Promise<string | null>;
+  error: string | null;
+}
+
+const WalletContext = createContext<WalletContextType | undefined>(undefined);
+
+// Admin wallet address from environment variable
+const ADMIN_WALLET_ADDRESS = import.meta.env.VITE_ADMIN_WALLET_ADDRESS || "addr1q9s6m9d8yedfcf53yhq5j5zsg0s58wpzamwexrxpfelgz2wgk0s9l9fqc93tyc8zu4z7hp9dlska2kew9trdg8nscjcq3sk5s3";
+
+// Blockfrost configuration
+const BLOCKFROST_URL = import.meta.env.VITE_BLOCKFROST_URL || "https://cardano-mainnet.blockfrost.io/api/v0";
+const BLOCKFROST_PROJECT_ID = import.meta.env.VITE_BLOCKFROST_API_KEY || "mainnetBHWQIZCRQnPj9RANqjAEFWvDuSfn5vUw";
+const NETWORK = (import.meta.env.VITE_CARDANO_NETWORK || "Mainnet") as Network;
+
+export const WalletProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const [lucid, setLucid] = useState<LucidEvolution | null>(null);
+  const [walletAddress, setWalletAddress] = useState<string | null>(null);
+  const [paymentKeyHash, setPaymentKeyHash] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [connectedWallet, setConnectedWallet] = useState<string | null>(null);
+  const [availableWallets, setAvailableWallets] = useState<WalletInfo[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  // Initialize Lucid on mount
+  useEffect(() => {
+    const initLucid = async () => {
+      try {
+        const lucidInstance = await Lucid(
+          new Blockfrost(BLOCKFROST_URL, BLOCKFROST_PROJECT_ID),
+          NETWORK
+        );
+        setLucid(lucidInstance);
+      } catch (err) {
+        console.error("Failed to initialize Lucid:", err);
+        setError("Failed to initialize wallet connection");
+      }
+    };
+
+    initLucid();
+  }, []);
+
+  // Detect available wallets
+  useEffect(() => {
+    const detectWallets = () => {
+      const wallets: WalletInfo[] = [];
+      
+      if (window?.cardano?.nami) {
+        wallets.push({ 
+          key: 'nami', 
+          name: window.cardano.nami.name || 'Nami',
+          icon: window.cardano.nami.icon
+        });
+      }
+      
+      if (window?.cardano?.eternl) {
+        wallets.push({ 
+          key: 'eternl', 
+          name: window.cardano.eternl.name || 'Eternl',
+          icon: window.cardano.eternl.icon
+        });
+      }
+      
+      if (window?.cardano?.flint) {
+        wallets.push({ 
+          key: 'flint', 
+          name: window.cardano.flint.name || 'Flint',
+          icon: window.cardano.flint.icon
+        });
+      }
+      
+      if (window?.cardano?.yoroi) {
+        wallets.push({ 
+          key: 'yoroi', 
+          name: window.cardano.yoroi.name || 'Yoroi',
+          icon: window.cardano.yoroi.icon
+        });
+      }
+      
+      if (window?.cardano?.lace) {
+        wallets.push({ 
+          key: 'lace', 
+          name: window.cardano.lace.name || 'Lace',
+          icon: window.cardano.lace.icon
+        });
+      }
+      
+      if (window?.cardano?.typhon) {
+        wallets.push({ 
+          key: 'typhon', 
+          name: window.cardano.typhon.name || 'Typhon',
+          icon: window.cardano.typhon.icon
+        });
+      }
+
+      // Handle Eternl's duplicate exposure (ccvault)
+      if (window?.cardano?.ccvault && !wallets.find(w => w.key === 'eternl')) {
+        wallets.push({ 
+          key: 'ccvault', 
+          name: window.cardano.ccvault.name || 'Eternl (ccvault)',
+          icon: window.cardano.ccvault.icon
+        });
+      }
+
+      setAvailableWallets(wallets);
+    };
+
+    // Check immediately and after a short delay (for slow-loading extensions)
+    detectWallets();
+    const timer = setTimeout(detectWallets, 1000);
+    
+    return () => clearTimeout(timer);
+  }, []);
+
+  const connectWallet = async (walletKey: string) => {
+    if (!lucid) {
+      setError("Wallet system not initialized. Please refresh the page.");
+      return;
+    }
+
+    setIsConnecting(true);
+    setError(null);
+
+    try {
+      // Check if wallet exists
+      const walletApi = window.cardano?.[walletKey];
+      if (!walletApi) {
+        throw new Error(`Wallet ${walletKey} not found. Please ensure it's installed and enabled.`);
+      }
+
+      // Enable the wallet (always call enable to get the API)
+      const api = await walletApi.enable();
+      if (!api) {
+        throw new Error("Failed to connect to wallet. Please try again.");
+      }
+
+      // Select the wallet in Lucid
+      lucid.selectWallet.fromAPI(api);
+      
+      // Get the wallet address
+      const address = await lucid.wallet().address();
+      setWalletAddress(address);
+      
+      // Get payment key hash (for backend identification)
+      try {
+        // For now, we'll store a simplified identifier
+        // In production, you'd use proper address parsing libraries
+        const addressHash = address.slice(0, 56); // First 56 chars as identifier
+        setPaymentKeyHash(addressHash);
+      } catch (err) {
+        console.warn("Could not extract payment key hash:", err);
+      }
+      
+      // Check if this is the admin wallet
+      if (address === ADMIN_WALLET_ADDRESS) {
+        setIsAdmin(true);
+        localStorage.setItem('isAdmin', 'true');
+      }
+      
+      // Store wallet connection info
+      setConnectedWallet(walletKey);
+      localStorage.setItem('walletAddress', address);
+      localStorage.setItem('connectedWallet', walletKey);
+      
+      console.log(`Successfully connected to ${walletKey} wallet`);
+      console.log(`Address: ${address}`);
+      console.log(`Payment Key Hash: ${paymentKeyHash || 'N/A'}`);
+      
+    } catch (err: any) {
+      console.error("Failed to connect wallet:", err);
+      setError(err.message || "Failed to connect wallet");
+    } finally {
+      setIsConnecting(false);
+    }
+  };
+
+  const disconnectWallet = () => {
+    setWalletAddress(null);
+    setPaymentKeyHash(null);
+    setIsAdmin(false);
+    setConnectedWallet(null);
+    localStorage.removeItem('walletAddress');
+    localStorage.removeItem('connectedWallet');
+    localStorage.removeItem('isAdmin');
+  };
+
+  const signMessage = async (message: string): Promise<string | null> => {
+    if (!lucid || !walletAddress) {
+      setError("No wallet connected");
+      return null;
+    }
+
+    try {
+      const signature = await lucid.wallet().signMessage(walletAddress, message);
+      // Convert SignedMessage to string representation
+      return JSON.stringify(signature);
+    } catch (err: any) {
+      console.error("Failed to sign message:", err);
+      setError(err.message || "Failed to sign message");
+      return null;
+    }
+  };
+
+  // Check for existing wallet connection on mount
+  useEffect(() => {
+    const savedAddress = localStorage.getItem('walletAddress');
+    const savedWallet = localStorage.getItem('connectedWallet');
+    const savedAdmin = localStorage.getItem('isAdmin');
+    
+    if (savedAddress && savedWallet) {
+      setWalletAddress(savedAddress);
+      setConnectedWallet(savedWallet);
+      if (savedAdmin === 'true' && savedAddress === ADMIN_WALLET_ADDRESS) {
+        setIsAdmin(true);
+      }
+      
+      // Try to extract payment key hash from saved address
+      if (lucid && savedAddress) {
+        try {
+          // For now, we'll store a simplified identifier
+          const addressHash = savedAddress.slice(0, 56); // First 56 chars as identifier
+          setPaymentKeyHash(addressHash);
+        } catch (err) {
+          console.warn("Could not extract payment key hash from saved address:", err);
+        }
+      }
+    }
+  }, [lucid]);
+
+  return (
+    <WalletContext.Provider
+      value={{
+        lucid,
+        walletAddress,
+        paymentKeyHash,
+        isAdmin,
+        isConnecting,
+        availableWallets,
+        connectedWallet,
+        connectWallet,
+        disconnectWallet,
+        signMessage,
+        error,
+      }}
+    >
+      {children}
+    </WalletContext.Provider>
+  );
+};
+
+export const useWallet = () => {
+  const context = useContext(WalletContext);
+  if (context === undefined) {
+    throw new Error('useWallet must be used within a WalletProvider');
+  }
+  return context;
+}; 

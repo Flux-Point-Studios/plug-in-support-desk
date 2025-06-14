@@ -1,0 +1,3 @@
+[submodule "masumi-services"]
+	path = masumi-services
+	url = https://github.com/masumi-network/masumi-services-dev-quickstart.git

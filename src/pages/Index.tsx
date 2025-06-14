@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -6,8 +5,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { WalletConnect } from "@/components/WalletConnect";
 import { Bot, Shield, Zap, Check, ArrowRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useWallet } from "@/contexts/WalletContextSimple";
+import { Separator } from "@/components/ui/separator";
 
 const Index = () => {
   const navigate = useNavigate();
@@ -31,8 +33,8 @@ const Index = () => {
 
   const handleStripeCheckout = (plan: string) => {
     console.log("Redirect to Stripe checkout for:", plan);
-    // This will integrate with Stripe checkout
-    window.open("https://checkout.stripe.com/", "_blank");
+    // Redirect to the actual Stripe payment link
+    window.open("https://buy.stripe.com/5kA3cvdZp68AgENdwNfrW07", "_blank");
   };
 
   return (
@@ -105,20 +107,20 @@ const Index = () => {
       <section className="container mx-auto px-4 py-20">
         <h2 className="text-4xl font-bold text-center text-white mb-12">Choose Your Plan</h2>
         <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
-          <Card className="bg-slate-800/50 border-slate-700">
+          <Card className="bg-slate-800/50 border-slate-700 opacity-50">
             <CardHeader>
-              <CardTitle className="text-white">Starter</CardTitle>
-              <CardDescription className="text-slate-300">Perfect for small teams</CardDescription>
-              <div className="text-3xl font-bold text-white">$29<span className="text-lg font-normal text-slate-300">/month</span></div>
+              <CardTitle className="text-slate-400">Starter</CardTitle>
+              <CardDescription className="text-slate-500">Coming soon</CardDescription>
+              <div className="text-3xl font-bold text-slate-400">$10<span className="text-lg font-normal text-slate-500">/month</span></div>
             </CardHeader>
             <CardContent>
-              <ul className="space-y-2 text-slate-300 mb-6">
-                <li className="flex items-center"><Check className="h-4 w-4 text-green-500 mr-2" />1 AI Support Agent</li>
-                <li className="flex items-center"><Check className="h-4 w-4 text-green-500 mr-2" />10MB Documentation Upload</li>
-                <li className="flex items-center"><Check className="h-4 w-4 text-green-500 mr-2" />Basic Analytics</li>
+              <ul className="space-y-2 text-slate-500 mb-6">
+                <li className="flex items-center"><Check className="h-4 w-4 text-slate-600 mr-2" />1 AI Support Agent</li>
+                <li className="flex items-center"><Check className="h-4 w-4 text-slate-600 mr-2" />10MB Documentation Upload</li>
+                <li className="flex items-center"><Check className="h-4 w-4 text-slate-600 mr-2" />Basic Analytics</li>
               </ul>
-              <Button className="w-full" onClick={() => handleStripeCheckout('starter')}>
-                Choose Starter
+              <Button className="w-full" disabled variant="secondary">
+                Coming Soon
               </Button>
             </CardContent>
           </Card>
@@ -127,36 +129,39 @@ const Index = () => {
             <CardHeader>
               <CardTitle className="text-white">Pro</CardTitle>
               <CardDescription className="text-slate-300">Most popular choice</CardDescription>
-              <div className="text-3xl font-bold text-white">$79<span className="text-lg font-normal text-slate-300">/month</span></div>
+              <div className="text-3xl font-bold text-white">$25<span className="text-lg font-normal text-slate-300">/month</span></div>
             </CardHeader>
             <CardContent>
               <ul className="space-y-2 text-slate-300 mb-6">
-                <li className="flex items-center"><Check className="h-4 w-4 text-green-500 mr-2" />3 AI Support Agents</li>
+                <li className="flex items-center"><Check className="h-4 w-4 text-green-500 mr-2" />1 AI Support Agent</li>
                 <li className="flex items-center"><Check className="h-4 w-4 text-green-500 mr-2" />100MB Documentation Upload</li>
                 <li className="flex items-center"><Check className="h-4 w-4 text-green-500 mr-2" />Advanced Analytics</li>
                 <li className="flex items-center"><Check className="h-4 w-4 text-green-500 mr-2" />Sentiment Analysis</li>
               </ul>
-              <Button className="w-full bg-blue-600 hover:bg-blue-700" onClick={() => handleStripeCheckout('pro')}>
-                Choose Pro
-              </Button>
+              <div className="stripe-button-wrapper">
+                <stripe-buy-button
+                  buy-button-id="buy_btn_1RZRDPDPjjPcAkxqVxIC4Uy7"
+                  publishable-key="pk_live_51OPtxUDPjjPcAkxqmjcKCty6rLE1ASSfGq0KbpNdtIy6UXhx8G6XmdFuxqtla5qS2EnBLZju8PqUHj8xP1IecOVd00OA4vyJhK"
+                ></stripe-buy-button>
+              </div>
             </CardContent>
           </Card>
 
-          <Card className="bg-slate-800/50 border-slate-700">
+          <Card className="bg-slate-800/50 border-slate-700 opacity-50">
             <CardHeader>
-              <CardTitle className="text-white">Enterprise</CardTitle>
-              <CardDescription className="text-slate-300">For large organizations</CardDescription>
-              <div className="text-3xl font-bold text-white">$199<span className="text-lg font-normal text-slate-300">/month</span></div>
+              <CardTitle className="text-slate-400">Enterprise</CardTitle>
+              <CardDescription className="text-slate-500">Coming soon</CardDescription>
+              <div className="text-3xl font-bold text-slate-400">$199<span className="text-lg font-normal text-slate-500">/month</span></div>
             </CardHeader>
             <CardContent>
-              <ul className="space-y-2 text-slate-300 mb-6">
-                <li className="flex items-center"><Check className="h-4 w-4 text-green-500 mr-2" />Unlimited AI Agents</li>
-                <li className="flex items-center"><Check className="h-4 w-4 text-green-500 mr-2" />Unlimited Documentation</li>
-                <li className="flex items-center"><Check className="h-4 w-4 text-green-500 mr-2" />Full Analytics Suite</li>
-                <li className="flex items-center"><Check className="h-4 w-4 text-green-500 mr-2" />Priority Support</li>
+              <ul className="space-y-2 text-slate-500 mb-6">
+                <li className="flex items-center"><Check className="h-4 w-4 text-slate-600 mr-2" />Unlimited AI Agents</li>
+                <li className="flex items-center"><Check className="h-4 w-4 text-slate-600 mr-2" />Unlimited Documentation</li>
+                <li className="flex items-center"><Check className="h-4 w-4 text-slate-600 mr-2" />Full Analytics Suite</li>
+                <li className="flex items-center"><Check className="h-4 w-4 text-slate-600 mr-2" />Priority Support</li>
               </ul>
-              <Button className="w-full" onClick={() => handleStripeCheckout('enterprise')}>
-                Choose Enterprise
+              <Button className="w-full" disabled variant="secondary">
+                Coming Soon
               </Button>
             </CardContent>
           </Card>
@@ -217,6 +222,17 @@ const Index = () => {
                     <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700">
                       Create Account
                     </Button>
+                    
+                    <div className="relative my-4">
+                      <Separator className="bg-slate-600" />
+                      <span className="absolute left-1/2 -translate-x-1/2 -translate-y-1/2 bg-slate-800 px-2 text-sm text-slate-400">
+                        OR
+                      </span>
+                    </div>
+                    
+                    <div className="w-full">
+                      <WalletConnect fullWidth variant="default" />
+                    </div>
                   </form>
                 </TabsContent>
                 <TabsContent value="login">
@@ -246,6 +262,17 @@ const Index = () => {
                     <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700">
                       Sign In
                     </Button>
+                    
+                    <div className="relative my-4">
+                      <Separator className="bg-slate-600" />
+                      <span className="absolute left-1/2 -translate-x-1/2 -translate-y-1/2 bg-slate-800 px-2 text-sm text-slate-400">
+                        OR
+                      </span>
+                    </div>
+                    
+                    <div className="w-full">
+                      <WalletConnect fullWidth variant="default" />
+                    </div>
                   </form>
                 </TabsContent>
               </Tabs>

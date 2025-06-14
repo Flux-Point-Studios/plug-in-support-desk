@@ -1,21 +1,38 @@
-
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { Bot, Upload, Settings, MessageSquare, Plus, FileText, User } from "lucide-react";
+import { WalletConnect } from "@/components/WalletConnect";
+import { Bot, Upload, Settings, MessageSquare, Plus, FileText, User, Shield, Copy, CheckCircle, AlertCircle, Sparkles, RefreshCw } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
+import { useWallet } from "@/contexts/WalletContextLite";
+import { toast } from "sonner";
+import { generateAgentConfig, regenerateField } from "@/lib/ai-service";
 
 const Dashboard = () => {
   const navigate = useNavigate();
+  const { walletAddress, paymentKeyHash, isAdmin, connectedWallet, signMessage } = useWallet();
+  const [businessPrompt, setBusinessPrompt] = useState("");
   const [agentName, setAgentName] = useState("");
   const [agentBio, setAgentBio] = useState("");
   const [agentDescription, setAgentDescription] = useState("");
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
+  const [messageToSign, setMessageToSign] = useState("");
+  const [signature, setSignature] = useState("");
+  const [copied, setCopied] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [isRegenerating, setIsRegenerating] = useState<string | null>(null);
+
+  // Redirect to home if no wallet is connected
+  useEffect(() => {
+    if (!walletAddress) {
+      navigate("/");
+    }
+  }, [walletAddress, navigate]);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -23,15 +40,129 @@ const Dashboard = () => {
     }
   };
 
-  const handleCreateAgent = (e: React.FormEvent) => {
+  const handleCreateAgent = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log("Creating agent:", {
-      name: agentName,
-      bio: agentBio,
-      description: agentDescription,
-      files: uploadedFiles
-    });
-    // Here you would save the agent to your database
+    
+    if (!agentName || !agentBio || !agentDescription) {
+      toast.error("Please fill in all required fields");
+      return;
+    }
+    
+    // Import the createAgent function
+    const { createAgent } = await import('@/lib/agents');
+    
+    try {
+      toast.loading("Creating agent and registering with Masumi...");
+      
+      const agent = await createAgent({
+        name: agentName,
+        description: agentDescription,
+        bio: agentBio,
+        documents: uploadedFiles
+      });
+      
+      toast.dismiss();
+      toast.success(`Agent "${agent.name}" created and registered successfully!`);
+      
+      // Reset form
+      setAgentName("");
+      setAgentBio("");
+      setAgentDescription("");
+      setUploadedFiles([]);
+      
+      // TODO: Refresh agents list
+    } catch (error: any) {
+      toast.dismiss();
+      toast.error(error.message || "Failed to create agent");
+    }
+  };
+
+  const handleSignMessage = async () => {
+    if (!messageToSign) {
+      toast.error("Please enter a message to sign");
+      return;
+    }
+
+    const sig = await signMessage(messageToSign);
+    if (sig) {
+      setSignature(sig);
+      toast.success("Message signed successfully!");
+    } else {
+      toast.error("Failed to sign message");
+    }
+  };
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    toast.success("Copied to clipboard!");
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const formatAddress = (address: string) => {
+    if (!address) return '';
+    // Handle simplified wallet addresses from WalletContextLite
+    if (address.includes('_')) {
+      const parts = address.split('_');
+      return `${parts[0]} (${parts[1]})`;
+    }
+    return `${address.slice(0, 15)}...${address.slice(-15)}`;
+  };
+
+  const handleGenerateAgentConfig = async () => {
+    if (!businessPrompt.trim()) {
+      toast.error("Please describe your business first");
+      return;
+    }
+
+    setIsGenerating(true);
+    try {
+      const suggestions = await generateAgentConfig({ businessPrompt });
+      
+      setAgentName(suggestions.name);
+      setAgentBio(suggestions.bio);
+      setAgentDescription(suggestions.description);
+      
+      toast.success("AI suggestions generated! Feel free to edit them.");
+    } catch (error: any) {
+      toast.error(error.message || "Failed to generate suggestions");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleRegenerateField = async (field: 'name' | 'bio' | 'description') => {
+    if (!businessPrompt.trim()) {
+      toast.error("Please describe your business first");
+      return;
+    }
+
+    setIsRegenerating(field);
+    try {
+      const newValue = await regenerateField(field, businessPrompt, {
+        name: agentName,
+        bio: agentBio,
+        description: agentDescription
+      });
+      
+      switch (field) {
+        case 'name':
+          setAgentName(newValue);
+          break;
+        case 'bio':
+          setAgentBio(newValue);
+          break;
+        case 'description':
+          setAgentDescription(newValue);
+          break;
+      }
+      
+      toast.success(`${field.charAt(0).toUpperCase() + field.slice(1)} regenerated!`);
+    } catch (error: any) {
+      toast.error(error.message || `Failed to regenerate ${field}`);
+    } finally {
+      setIsRegenerating(null);
+    }
   };
 
   const mockAgents = [
@@ -69,16 +200,39 @@ const Dashboard = () => {
             </nav>
           </div>
           <div className="flex items-center space-x-4">
+            {isAdmin && (
+              <Badge variant="default" className="bg-blue-600">
+                <Shield className="h-3 w-3 mr-1" />
+                Admin Mode
+              </Badge>
+            )}
             <ThemeToggle />
-            <Button variant="outline" size="sm">
-              <User className="h-4 w-4 mr-2" />
-              Account
-            </Button>
+            {walletAddress ? (
+              <WalletConnect />
+            ) : (
+              <Button variant="outline" size="sm">
+                <User className="h-4 w-4 mr-2" />
+                Account
+              </Button>
+            )}
           </div>
         </div>
       </header>
 
       <div className="container mx-auto px-4 py-8">
+        {/* Admin Notice */}
+        {isAdmin && (
+          <div className="mb-6 p-4 bg-blue-600/10 border border-blue-600/20 rounded-lg flex items-center gap-3">
+            <Shield className="h-5 w-5 text-blue-500" />
+            <div>
+              <p className="font-semibold text-blue-500">Admin Mode Active</p>
+              <p className="text-sm text-muted-foreground">
+                You have unlimited access to all platform features without subscription requirements.
+              </p>
+            </div>
+          </div>
+        )}
+        
         {/* Dashboard Header */}
         <div className="mb-8">
           <h1 className="text-4xl font-bold mb-2">AI Agent Dashboard</h1>
@@ -100,8 +254,62 @@ const Dashboard = () => {
               </CardHeader>
               <CardContent>
                 <form onSubmit={handleCreateAgent} className="space-y-6">
+                  {/* AI Assistant Section */}
+                  <div className="p-4 bg-accent/50 rounded-lg border border-border">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Sparkles className="h-5 w-5 text-primary" />
+                      <h3 className="font-semibold">AI Assistant</h3>
+                    </div>
+                    <div>
+                      <Label htmlFor="business-prompt">Describe Your Business</Label>
+                      <Textarea
+                        id="business-prompt"
+                        placeholder="e.g., We're a SaaS company providing project management tools for remote teams. We need help with onboarding, feature questions, and troubleshooting..."
+                        value={businessPrompt}
+                        onChange={(e) => setBusinessPrompt(e.target.value)}
+                        rows={3}
+                        className="mt-2"
+                      />
+                      <Button
+                        type="button"
+                        onClick={handleGenerateAgentConfig}
+                        disabled={isGenerating || !businessPrompt.trim()}
+                        className="mt-3 w-full"
+                        variant="secondary"
+                      >
+                        {isGenerating ? (
+                          <>
+                            <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                            Generating...
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="h-4 w-4 mr-2" />
+                            Generate Agent Configuration
+                          </>
+                                                  )}
+                        </Button>
+                      </div>
+                      {/* Temporary debug button */}
+
+                    </div>
+
                   <div>
-                    <Label htmlFor="agent-name">Agent Name</Label>
+                    <div className="flex items-center justify-between mb-2">
+                      <Label htmlFor="agent-name">Agent Name</Label>
+                      {agentName && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleRegenerateField('name')}
+                          disabled={isRegenerating === 'name'}
+                        >
+                          <RefreshCw className={`h-3 w-3 mr-1 ${isRegenerating === 'name' ? 'animate-spin' : ''}`} />
+                          Regenerate
+                        </Button>
+                      )}
+                    </div>
                     <Input
                       id="agent-name"
                       placeholder="e.g., TechSupport Pro"
@@ -112,7 +320,21 @@ const Dashboard = () => {
                   </div>
 
                   <div>
-                    <Label htmlFor="agent-bio">Agent Bio</Label>
+                    <div className="flex items-center justify-between mb-2">
+                      <Label htmlFor="agent-bio">Agent Bio</Label>
+                      {agentBio && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleRegenerateField('bio')}
+                          disabled={isRegenerating === 'bio'}
+                        >
+                          <RefreshCw className={`h-3 w-3 mr-1 ${isRegenerating === 'bio' ? 'animate-spin' : ''}`} />
+                          Regenerate
+                        </Button>
+                      )}
+                    </div>
                     <Input
                       id="agent-bio"
                       placeholder="Brief description of your agent's expertise"
@@ -123,7 +345,21 @@ const Dashboard = () => {
                   </div>
 
                   <div>
-                    <Label htmlFor="agent-description">Detailed Description</Label>
+                    <div className="flex items-center justify-between mb-2">
+                      <Label htmlFor="agent-description">Detailed Description</Label>
+                      {agentDescription && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleRegenerateField('description')}
+                          disabled={isRegenerating === 'description'}
+                        >
+                          <RefreshCw className={`h-3 w-3 mr-1 ${isRegenerating === 'description' ? 'animate-spin' : ''}`} />
+                          Regenerate
+                        </Button>
+                      )}
+                    </div>
                     <Textarea
                       id="agent-description"
                       placeholder="Describe your agent's personality, communication style, and specific knowledge areas..."

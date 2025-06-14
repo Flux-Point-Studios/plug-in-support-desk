@@ -1,0 +1,31 @@
+{
+  "network": "Preprod",
+  "name": "AI Support Agent",
+  "description": "Intelligent customer support agent powered by Flux Point Studios AI. Provides instant, accurate support 24/7.",
+  "Tags": ["support", "AI", "customer-service", "help-desk"],
+  "ExampleOutputs": [],
+  "Author": {
+    "name": "Flux Point Studios",
+    "email": "support@fluxpointstudios.com"
+  },
+  "Legal": {
+    "terms": "https://fluxpointstudios.com/terms",
+    "privacy": "https://fluxpointstudios.com/privacy"
+  },
+  "apiBaseUrl": "https://support-bot-builder.vercel.app/api/agent",
+  "Capability": {
+    "name": "Customer Support AI",
+    "version": "1.0.0"
+  },
+  "AgentPricing": {
+    "pricingType": "Fixed",
+    "Pricing": [
+      {
+        "unit": "",
+        "amount": "1000000"
+      }
+    ]
+  },
+  "sellingWalletVkey": "3098520b410171508162069c1bf6951e478a86d859f9e1deae96ce08",
+  "paymentContractAddress": "addr_test1wrsr3luhqv0ftxjc6yrafw0tfesvtecrpck0s83arm0ttfqq77nu3"
+} 

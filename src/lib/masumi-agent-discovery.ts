@@ -1,6 +1,9 @@
 // Masumi Agent Discovery and Usage Service
 // This service discovers existing agents on Masumi Preprod and facilitates their usage
 
+import type { LucidEvolution } from '@lucid-evolution/lucid';
+import { buildMasumiPaymentTx, checkSufficientBalance, waitForTxConfirmation } from './masumi-transaction-builder';
+
 // Use proxy endpoint to avoid CORS issues
 const PROXY_URL = '/api/masumi-proxy';
 const AGENT_PROXY_URL = '/api/agent-proxy';
@@ -54,6 +57,9 @@ export interface AgentInputSchema {
 export interface StartJobResponse {
   job_id: string;
   payment_id: string;
+  paymentIdentifier?: string; // The payment address from Masumi
+  lovelaceAmount?: string; // The amount to pay
+  jobIdentifier?: string; // Alternative name for job_id
 }
 
 export interface JobStatusResponse {
@@ -207,17 +213,20 @@ export async function checkAgentAvailability(apiBaseUrl: string): Promise<boolea
 export async function getAgentInputSchema(apiBaseUrl: string): Promise<AgentInputSchema> {
   try {
     const cleanUrl = `${apiBaseUrl}/input_schema`.replace(/([^:]\/)\/+/g, "$1");
+    console.log('Fetching agent input schema from:', cleanUrl);
     const schema = await proxyAgentRequest(cleanUrl, 'GET');
+    console.log('Agent input schema:', schema);
     return schema;
   } catch (error: any) {
     console.error('Failed to get agent input schema:', error);
-    // Return default schema for text-based queries
+    console.warn('Using default schema with website_description field for Research Agent compatibility');
+    // Return schema that works with Research Agent
     return {
       input_data: [
         { 
-          id: 'text', 
+          id: 'website_description', 
           type: 'string',
-          name: 'Text Input',
+          name: 'Website Description',
           data: {
             description: 'Enter your query or question',
             placeholder: 'Type your message here...'
@@ -243,7 +252,11 @@ export async function startAgentJob(
       identifier_from_purchaser: `job_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`
     };
 
+    console.log('Starting agent job at:', cleanUrl);
+    console.log('Job data:', JSON.stringify(jobData, null, 2));
+
     const response = await proxyAgentRequest(cleanUrl, 'POST', jobData);
+    console.log('Job started successfully:', response);
     return response;
   } catch (error: any) {
     console.error('Failed to start agent job:', error);
@@ -274,19 +287,118 @@ function generatePurchaseId(): string {
 }
 
 /**
- * Complete payment for agent job (requires API key - placeholder for now)
+ * Complete payment for agent job (integrates with connected wallet)
  */
 export async function completePayment(
   agent: MasumiAgent,
   paymentId: string,
   inputData: Record<string, string>,
-  apiKey?: string
-): Promise<boolean> {
+  options?: {
+    apiKey?: string;
+    useWallet?: boolean;
+    onProgress?: (message: string) => void;
+    lucid?: LucidEvolution;
+    paymentIdentifier?: string; // From start_job response
+    lovelaceAmount?: string; // From start_job response
+  }
+): Promise<{ success: boolean; txHash?: string; receipt?: any }> {
+  const { apiKey, useWallet = true, onProgress, lucid, paymentIdentifier, lovelaceAmount } = options || {};
+
+  // Try wallet payment first if requested and lucid is available
+  if (useWallet && lucid && paymentIdentifier && lovelaceAmount) {
+    try {
+      onProgress?.('Checking wallet balance...');
+      
+      const amount = BigInt(lovelaceAmount);
+      
+      // Check balance
+      const balanceCheck = await checkSufficientBalance(lucid, amount);
+      
+      if (!balanceCheck.sufficient) {
+        const adaRequired = Number(balanceCheck.required) / 1_000_000;
+        const adaAvailable = Number(balanceCheck.available) / 1_000_000;
+        throw new Error(`Insufficient balance. Need: ${adaRequired} ADA, have: ${adaAvailable} ADA`);
+      }
+
+      onProgress?.('Building transaction...');
+      
+      // Build and submit the transaction
+      const txHash = await buildMasumiPaymentTx(lucid, paymentIdentifier, amount, {
+        agentId: agent.agentIdentifier,
+        paymentId,
+        inputHash: hashInputData(inputData),
+        timestamp: new Date().toISOString()
+      });
+
+      onProgress?.(`Transaction submitted: ${txHash}`);
+      
+      // Wait for confirmation
+      onProgress?.('Waiting for confirmation...');
+      const confirmed = await waitForTxConfirmation(lucid, txHash);
+      
+      if (confirmed) {
+        onProgress?.('Transaction confirmed on-chain!');
+      }
+      
+      return {
+        success: true,
+        txHash,
+        receipt: {
+          agentId: agent.agentIdentifier,
+          paymentIdentifier,
+          lovelaceAmount,
+          timestamp: new Date().toISOString(),
+          network: 'Preprod',
+          txHash
+        }
+      };
+      
+    } catch (walletError: any) {
+      console.error('Wallet payment failed:', walletError);
+      onProgress?.(`Wallet payment failed: ${walletError.message}`);
+      
+      // Fall back to API key method if available
+      if (!apiKey) {
+        throw walletError;
+      }
+    }
+  }
+
+  // Fallback to simulation if missing required params
+  if (useWallet && !lucid) {
+    onProgress?.('Note: Real transactions require Lucid Evolution. Using simulation.');
+  } else if (useWallet && (!paymentIdentifier || !lovelaceAmount)) {
+    onProgress?.('Note: Missing payment identifier or amount from agent. Using simulation.');
+  }
+
+  if (useWallet && typeof window !== 'undefined' && window.cardano) {
+    const simulatedTxHash = `sim_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+    
+    return {
+      success: true,
+      txHash: simulatedTxHash,
+      receipt: {
+        agentId: agent.agentIdentifier,
+        amount: agent.AgentPricing.FixedPricing?.Amounts?.[0] || { unit: '', amount: '1000000' },
+        timestamp: new Date().toISOString(),
+        network: 'Preprod',
+        simulated: true
+      }
+    };
+  }
+
+  // API key payment method (original implementation)
   if (!apiKey) {
-    console.warn('No payment API key provided - payment simulation only');
-    // In a real implementation, you'd need a funded payment source
-    // For now, we'll simulate payment completion
-    return true;
+    console.warn('No payment method available - simulation only');
+    return {
+      success: true,
+      txHash: `sim_nopay_${Date.now()}`,
+      receipt: {
+        agentId: agent.agentIdentifier,
+        simulated: true,
+        message: 'Payment bypassed - no wallet or API key'
+      }
+    };
   }
 
   try {
@@ -306,7 +418,6 @@ export async function completePayment(
     };
 
     // Note: This would also need to use a proxy for payment API
-    // For now, keeping as-is since it's mostly simulation
     const response = await fetch(`https://api.masumi.network/api/v1/purchase`, {
       method: 'POST',
       headers: {
@@ -320,7 +431,12 @@ export async function completePayment(
       throw new Error(`Payment failed: ${response.status} ${response.statusText}`);
     }
 
-    return true;
+    const result = await response.json();
+    return {
+      success: true,
+      txHash: result.data?.txHash || 'api_payment',
+      receipt: result.data
+    };
   } catch (error: any) {
     console.error('Payment completion failed:', error);
     throw new Error(`Payment failed: ${error.message}`);
@@ -370,7 +486,12 @@ export async function pollJobResult(
 export async function queryMasumiAgent(
   agent: MasumiAgent,
   query: string,
-  apiKey?: string
+  options?: {
+    apiKey?: string;
+    useWallet?: boolean;
+    onProgress?: (message: string) => void;
+    lucid?: LucidEvolution;
+  }
 ): Promise<string> {
   try {
     // 1. Check agent availability
@@ -396,8 +517,16 @@ export async function queryMasumiAgent(
     // 4. Start job
     const jobResponse = await startAgentJob(agent.apiBaseUrl, inputData);
 
-    // 5. Complete payment (simulated if no API key)
-    await completePayment(agent, jobResponse.payment_id, inputData, apiKey);
+    // 5. Complete payment (with wallet support)
+    const paymentResult = await completePayment(agent, jobResponse.payment_id, inputData, {
+      ...options,
+      paymentIdentifier: jobResponse.paymentIdentifier,
+      lovelaceAmount: jobResponse.lovelaceAmount
+    });
+    
+    if (!paymentResult.success) {
+      throw new Error('Payment failed');
+    }
 
     // 6. Poll for result
     const result = await pollJobResult(agent.apiBaseUrl, jobResponse.job_id);

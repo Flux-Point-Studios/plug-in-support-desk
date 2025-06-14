@@ -35,9 +35,11 @@ import {
 } from "@/lib/masumi-agent-discovery";
 import { toast } from "sonner";
 import { testAllAgents, getBestWorkingAgent, printAgentTestSummary } from "@/lib/test-agents";
+import { useWallet } from "@/contexts/WalletContext";
 
 const Support = () => {
   const navigate = useNavigate();
+  const { lucid } = useWallet();
   const [chatMessage, setChatMessage] = useState("");
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
@@ -218,7 +220,14 @@ const Support = () => {
         ));
 
         // Query the Masumi agent
-        const response = await queryMasumiAgent(activeAgent.agent, contextualQuery);
+        const response = await queryMasumiAgent(activeAgent.agent, contextualQuery, {
+          useWallet: true,
+          lucid: lucid || undefined,
+          onProgress: (message) => {
+            console.log('Payment progress:', message);
+            toast.info(message, { duration: 2000 });
+          }
+        });
 
         // Replace loading message with actual response
         const aiResponse: ChatMessage = {

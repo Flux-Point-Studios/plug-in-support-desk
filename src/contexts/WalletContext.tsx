@@ -26,10 +26,10 @@ const WalletContext = createContext<WalletContextType | undefined>(undefined);
 // Admin wallet address from environment variable
 const ADMIN_WALLET_ADDRESS = import.meta.env.VITE_ADMIN_WALLET_ADDRESS || "addr1q9s6m9d8yedfcf53yhq5j5zsg0s58wpzamwexrxpfelgz2wgk0s9l9fqc93tyc8zu4z7hp9dlska2kew9trdg8nscjcq3sk5s3";
 
-// Blockfrost configuration
-const BLOCKFROST_URL = import.meta.env.VITE_BLOCKFROST_URL || "https://cardano-mainnet.blockfrost.io/api/v0";
-const BLOCKFROST_PROJECT_ID = import.meta.env.VITE_BLOCKFROST_API_KEY || "mainnetBHWQIZCRQnPj9RANqjAEFWvDuSfn5vUw";
-const NETWORK = (import.meta.env.VITE_CARDANO_NETWORK || "Mainnet") as Network;
+// Blockfrost configuration for Preprod
+const BLOCKFROST_URL = import.meta.env.VITE_BLOCKFROST_URL || "https://cardano-preprod.blockfrost.io/api/v0";
+const BLOCKFROST_PROJECT_ID = import.meta.env.VITE_BLOCKFROST_API_KEY || "preprodqfu8fUmYnHk0lj5FBg8Gq9vuxDDJ8qSz";
+const NETWORK = (import.meta.env.VITE_CARDANO_NETWORK || "Preprod") as Network;
 
 export const WalletProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [lucid, setLucid] = useState<LucidEvolution | null>(null);

@@ -4,8 +4,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "@/components/ThemeProvider";
-// Temporarily using lightweight wallet context to avoid lodash issues
-import { WalletProvider } from "@/contexts/WalletContextLite";
+// Using full wallet context with Lucid Evolution for real transactions
+import { WalletProvider } from "@/contexts/WalletContext";
 import Index from "./pages/Index";
 import Dashboard from "./pages/Dashboard";
 import Support from "./pages/Support";

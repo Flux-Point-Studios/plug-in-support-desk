@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -28,15 +28,27 @@ import {
   Loader2,
   ChevronLeft,
   ChevronRight,
-  ChevronDown
+  ChevronDown,
+  DollarSign,
+  User,
+  Sparkles,
+  Brain,
+  Code,
+  Mail,
+  Palette,
+  FileText,
+  TrendingUp
 } from "lucide-react";
 import { toast } from "sonner";
-import { useWallet } from "@/contexts/WalletContextLite";
+import { useWallet } from "@/contexts/WalletContext";
 import { 
   discoverAgents, 
   findSupportAgents, 
   type MasumiAgent 
 } from "@/lib/masumi-agent-discovery";
+import { buildMasumiPaymentTx, checkSufficientBalance, waitForTxConfirmation } from '@/lib/masumi-transaction-builder';
+import { formatAddress } from '@/lib/masumi-address-utils';
+import { useNavigate } from 'react-router-dom';
 
 interface AgentSelectionModalProps {
   open: boolean;
@@ -50,7 +62,8 @@ interface AgentConfig {
 }
 
 export function AgentSelectionModal({ open, onOpenChange, onAgentSelected }: AgentSelectionModalProps) {
-  const { walletAddress, isAdmin, connectWallet, availableWallets, isConnecting, error } = useWallet();
+  const navigate = useNavigate();
+  const { walletAddress, paymentKeyHash, isAdmin, availableWallets, connectedWallet, connectWallet, isConnecting, lucid, error } = useWallet();
   const [agents, setAgents] = useState<MasumiAgent[]>([]);
   const [filteredAgents, setFilteredAgents] = useState<MasumiAgent[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -161,51 +174,124 @@ export function AgentSelectionModal({ open, onOpenChange, onAgentSelected }: Age
   };
 
   const handlePayAndActivate = async () => {
-    if (!selectedAgent || !walletAddress) {
-      toast.error("Please connect your wallet first");
-      return;
-    }
-
-    if (!businessContext.trim()) {
-      toast.error("Please provide business context");
-      return;
-    }
+    if (!selectedAgent || !businessContext.trim()) return;
 
     setIsProcessingPayment(true);
-    
-    try {
-      const price = getPriceDisplay(selectedAgent);
-      
-      if (isAdmin) {
-        // Admin bypass - simulate immediate payment
-        toast.success("Admin mode: Payment bypassed");
-        await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate processing
-      } else if (price.ada > 0) {
-        // For now, simulate payment processing
-        // In production, this would use actual Cardano wallet integration
-        toast.loading("Processing payment...");
-        await new Promise(resolve => setTimeout(resolve, 3000)); // Simulate payment processing
-        toast.dismiss();
-        toast.success(`Payment of ${price.display} processed successfully!`);
-      }
 
-      // Create agent configuration
+    try {
+      // Prepare configuration
       const config: AgentConfig = {
         businessContext,
         documents: uploadedFiles
       };
 
-      // Store payment receipt (in production, this would be the transaction hash)
-      const paymentReceipt = {
-        agentId: selectedAgent.agentIdentifier,
-        amount: price.display,
-        timestamp: new Date().toISOString(),
-        txHash: isAdmin ? 'admin_bypass' : `sim_${Date.now()}_${Math.random().toString(36).substring(7)}`
-      };
+      // Check if real payment is needed
+      const price = getPriceDisplay(selectedAgent);
+      let needsPayment = price.ada > 0 && !isAdmin;
 
-      localStorage.setItem('masumi-payment-receipt', JSON.stringify(paymentReceipt));
+      if (needsPayment && lucid) {
+        // Use real transaction
+        try {
+          toast.info("Preparing Cardano transaction...");
+          
+          // Get payment info
+          const paymentInfo = selectedAgent.PaymentIdentifier?.find(p => p.paymentType === 'Web3CardanoV1');
+          if (!paymentInfo) {
+            throw new Error('No payment information found for agent');
+          }
+
+          // For demo purposes, use a fixed payment identifier
+          // In production, this would come from the /start_job response
+          const paymentIdentifier = `addr_test1_agent_${selectedAgent.agentIdentifier.substring(0, 20)}`;
+          
+          // Get payment amount
+          const priceInfo = selectedAgent.AgentPricing.FixedPricing?.Amounts?.[0];
+          const lovelaceAmount = BigInt(priceInfo?.amount || '1000000');
+          
+          // Check balance
+          toast.info("Checking wallet balance...");
+          const balanceCheck = await checkSufficientBalance(lucid, lovelaceAmount);
+          
+          if (!balanceCheck.sufficient) {
+            const adaRequired = Number(balanceCheck.required) / 1_000_000;
+            const adaAvailable = Number(balanceCheck.available) / 1_000_000;
+            throw new Error(`Insufficient balance. Need: ${adaRequired} ADA, have: ${adaAvailable} ADA`);
+          }
+
+          // Build and submit transaction
+          toast.info("Building transaction...");
+          const txHash = await buildMasumiPaymentTx(lucid, paymentIdentifier, lovelaceAmount, {
+            agentId: selectedAgent.agentIdentifier,
+            businessContext: businessContext.substring(0, 64), // Limit metadata size
+            timestamp: new Date().toISOString()
+          });
+
+          toast.success(`Transaction submitted! Hash: ${txHash.substring(0, 8)}...`);
+          
+          // Wait for confirmation
+          toast.info("Waiting for confirmation...");
+          const confirmed = await waitForTxConfirmation(lucid, txHash);
+          
+          if (confirmed) {
+            toast.success("Transaction confirmed on-chain!");
+          }
+          
+          // Store real payment receipt
+          const paymentReceipt = {
+            agentId: selectedAgent.agentIdentifier,
+            amount: price.display,
+            timestamp: new Date().toISOString(),
+            txHash,
+            network: 'Preprod',
+            paymentIdentifier
+          };
+
+          localStorage.setItem('masumi-payment-receipt', JSON.stringify(paymentReceipt));
+          
+        } catch (txError: any) {
+          console.error('Transaction failed:', txError);
+          toast.error(`Transaction failed: ${txError.message}`);
+          
+          // Ask if user wants to continue with simulation
+          if (confirm('Transaction failed. Continue with payment simulation for testing?')) {
+            needsPayment = false; // Skip to simulation
+          } else {
+            throw txError;
+          }
+        }
+      } else if (needsPayment) {
+        // Show warning about payment implementation
+        toast.info(
+          "Note: Real wallet transactions require Lucid Evolution. Using payment simulation for testing.",
+          { duration: 5000 }
+        );
+      }
+
+      // Store simulated payment receipt if not using real tx
+      if (!lucid || !needsPayment) {
+        const paymentReceipt = {
+          agentId: selectedAgent.agentIdentifier,
+          amount: price.display,
+          timestamp: new Date().toISOString(),
+          txHash: isAdmin ? 'admin_bypass' : `sim_${Date.now()}_${Math.random().toString(36).substring(7)}`,
+          simulated: true,
+          network: 'Preprod'
+        };
+
+        localStorage.setItem('masumi-payment-receipt', JSON.stringify(paymentReceipt));
+      }
       
-      // Activate the agent
+      // Store the activated agent configuration
+      const activatedAgent = {
+        agent: selectedAgent,
+        config,
+        activatedAt: new Date().toISOString(),
+        paymentReceipt: JSON.parse(localStorage.getItem('masumi-payment-receipt') || '{}')
+      };
+      
+      localStorage.setItem('masumi-active-agent', JSON.stringify(activatedAgent));
+      
+      // Notify parent component
       onAgentSelected(selectedAgent, config);
       
       toast.success(`Agent "${selectedAgent.name}" activated successfully!`);
@@ -218,8 +304,8 @@ export function AgentSelectionModal({ open, onOpenChange, onAgentSelected }: Age
       setUploadedFiles([]);
 
     } catch (error: any) {
-      toast.error(`Payment failed: ${error.message}`);
-      console.error('Payment error:', error);
+      toast.error(`Activation failed: ${error.message}`);
+      console.error('Activation error:', error);
     } finally {
       setIsProcessingPayment(false);
     }

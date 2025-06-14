@@ -10,6 +10,7 @@ import { useWallet } from "@/contexts/WalletContextLite";
 import { toast } from "sonner";
 import { AgentSelectionModal } from "@/components/AgentSelectionModal";
 import { type MasumiAgent } from "@/lib/masumi-agent-discovery";
+import { formatAddress } from "@/lib/masumi-address-utils";
 
 interface AgentConfig {
   businessContext: string;
@@ -101,15 +102,6 @@ const Dashboard = () => {
       return `${amount / 1000000} ADA`;
     }
     return `${amount} ${pricing.unit}`;
-  };
-
-  const formatAddress = (address: string) => {
-    if (!address) return '';
-    if (address.includes('_')) {
-      const parts = address.split('_');
-      return `${parts[0]} (${parts[1]})`;
-    }
-    return `${address.slice(0, 15)}...${address.slice(-15)}`;
   };
 
   return (

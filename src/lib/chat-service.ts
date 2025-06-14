@@ -3,7 +3,7 @@ import { getSessionId } from './ai-service';
 
 // HARDCODED FOR HACKATHON
 const AGENT_API_URL = 'https://api.fluxpointstudios.com/chat';
-const AGENT_API_KEY = undefined; // Not needed for hackathon demo
+const AGENT_API_KEY = '16dc5e5e6671ae253eded051fab30876ca44d23c8089af7a07679528ed21eee2';
 
 export interface ChatResponse {
   reply: string;

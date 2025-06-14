@@ -57,6 +57,7 @@ const Support = () => {
     paymentReceipt?: any;
   } | null>(null);
   const [useMasumiAgent, setUseMasumiAgent] = useState(true);
+  const [useRealAI, setUseRealAI] = useState(false);
   
   // Sentiment tracking
   const [sentimentHistory, setSentimentHistory] = useState<SentimentData[]>([]);
@@ -65,7 +66,6 @@ const Support = () => {
   // Simulation controls
   const [simulationScenario, setSimulationScenario] = useState<keyof typeof sentimentScenarios>('balanced');
   const [isSimulating, setIsSimulating] = useState(false);
-  const [useRealAI, setUseRealAI] = useState(false); // Default to Masumi
   const simulatorRef = useRef<SentimentSimulator | null>(null);
   
   // Test agents
@@ -91,9 +91,21 @@ const Support = () => {
         const agentData = JSON.parse(savedAgent);
         setActiveAgent(agentData);
         toast.success(`Loaded active agent: ${agentData.agent.name}`);
+        // Use Masumi agent if available
+        setUseMasumiAgent(true);
+        setUseRealAI(false);
+      } else {
+        // No Masumi agent configured, default to Flux Point AI
+        console.log('No Masumi agent configured, defaulting to Flux Point AI');
+        setUseMasumiAgent(false);
+        setUseRealAI(true);
+        toast.info('Using Flux Point AI as no Masumi agent is configured');
       }
     } catch (error) {
       console.error('Failed to load active agent:', error);
+      // On error, also default to Flux Point AI
+      setUseMasumiAgent(false);
+      setUseRealAI(true);
     }
   };
   
@@ -125,7 +137,13 @@ const Support = () => {
   }, [sentimentHistory]);
 
   const startNewSession = () => {
-    const agentName = activeAgent?.agent.name || "AI Support Agent";
+    let agentName = "AI Support Agent";
+    if (activeAgent && useMasumiAgent) {
+      agentName = activeAgent.agent.name;
+    } else if (useRealAI) {
+      agentName = "Flux Point AI";
+    }
+    
     const newSession: ChatSession = {
       id: Date.now().toString(),
       messages: [
@@ -271,13 +289,19 @@ const Support = () => {
     } else if (useRealAI) {
       // Use real AI endpoint (existing implementation)
       try {
+        // Add business context if available from active agent configuration
+        let contextualMessage = chatMessage;
+        if (activeAgent?.config?.businessContext) {
+          contextualMessage = `Business Context: ${activeAgent.config.businessContext}\n\nCustomer Question: ${chatMessage}`;
+        }
+
         // Build conversation history
         const previousMessages = currentSession.messages.map(msg => ({
           role: (msg.type === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
           content: msg.content
         }));
 
-        const response = await sendChatMessage(chatMessage, {
+        const response = await sendChatMessage(contextualMessage, {
           serviceLevel: currentSession.serviceLevel,
           previousMessages
         });
@@ -474,7 +498,7 @@ const Support = () => {
             <div>
               <h1 className="text-4xl font-bold mb-2">Support Portal</h1>
               <p className="text-muted-foreground">Get instant help from our AI agent</p>
-              {activeAgent && (
+              {activeAgent && useMasumiAgent && (
                 <div className="mt-2 flex items-center space-x-2">
                   <Badge variant="outline" className="text-xs">
                     <Bot className="h-3 w-3 mr-1" />
@@ -482,6 +506,17 @@ const Support = () => {
                   </Badge>
                   <Badge variant="secondary" className="text-xs">
                     Masumi Network
+                  </Badge>
+                </div>
+              )}
+              {useRealAI && (
+                <div className="mt-2 flex items-center space-x-2">
+                  <Badge variant="outline" className="text-xs">
+                    <Zap className="h-3 w-3 mr-1" />
+                    Flux Point AI
+                  </Badge>
+                  <Badge variant="secondary" className="text-xs">
+                    Fallback Service
                   </Badge>
                 </div>
               )}
@@ -654,6 +689,8 @@ const Support = () => {
                   <CardDescription>
                     {useMasumiAgent && activeAgent 
                       ? `Powered by ${activeAgent.agent.name} on Masumi`
+                      : useRealAI 
+                      ? 'Powered by Flux Point AI'
                       : 'Get instant answers from our AI agent'
                     }
                   </CardDescription>

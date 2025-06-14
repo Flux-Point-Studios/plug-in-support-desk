@@ -8,7 +8,7 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { 
   Bot, Send, User, AlertCircle, Clock, CheckCircle, 
   Smile, Meh, Frown, ThumbsUp, ThumbsDown, X, Plus,
-  TrendingUp, TrendingDown, Minus, PlayCircle, StopCircle, Settings, Zap
+  TrendingUp, TrendingDown, Minus, PlayCircle, StopCircle, Settings, Zap, TestTube
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
@@ -34,6 +34,7 @@ import {
   type MasumiAgent 
 } from "@/lib/masumi-agent-discovery";
 import { toast } from "sonner";
+import { testAllAgents, getBestWorkingAgent, printAgentTestSummary } from "@/lib/test-agents";
 
 const Support = () => {
   const navigate = useNavigate();
@@ -64,6 +65,9 @@ const Support = () => {
   const [isSimulating, setIsSimulating] = useState(false);
   const [useRealAI, setUseRealAI] = useState(false); // Default to Masumi
   const simulatorRef = useRef<SentimentSimulator | null>(null);
+  
+  // Test agents
+  const [isTestingAgents, setIsTestingAgents] = useState(false);
   
   // Effect to stop simulation when switching to real AI
   useEffect(() => {
@@ -405,6 +409,30 @@ const Support = () => {
     return <Minus className="h-4 w-4 text-muted-foreground" />;
   };
 
+  const handleTestAgents = async () => {
+    setIsTestingAgents(true);
+    try {
+      toast.info("Testing Masumi agents... Check console for details");
+      
+      const results = await testAllAgents();
+      printAgentTestSummary(results);
+      
+      const availableCount = results.filter(r => r.isAvailable).length;
+      
+      if (availableCount > 0) {
+        toast.success(`Found ${availableCount} working agents! Check console for details.`);
+      } else {
+        toast.error("No agents are currently available. The Masumi network may be experiencing issues.");
+      }
+      
+    } catch (error: any) {
+      console.error('Agent testing failed:', error);
+      toast.error(`Agent testing failed: ${error.message}`);
+    } finally {
+      setIsTestingAgents(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -476,14 +504,62 @@ const Support = () => {
                     <p className="text-xs text-orange-700 dark:text-orange-300 mb-2">
                       No Masumi agent configured yet.
                     </p>
+                    <div className="space-y-2">
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        onClick={() => navigate('/dashboard')}
+                        className="w-full"
+                      >
+                        <Settings className="h-3 w-3 mr-1" />
+                        Configure Agent
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        onClick={handleTestAgents}
+                        disabled={isTestingAgents}
+                        className="w-full"
+                      >
+                        {isTestingAgents ? (
+                          <>
+                            <TestTube className="h-3 w-3 mr-1 animate-pulse" />
+                            Testing...
+                          </>
+                        ) : (
+                          <>
+                            <TestTube className="h-3 w-3 mr-1" />
+                            Test Available Agents
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+                
+                {activeAgent && (
+                  <div className="p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                    <p className="text-xs text-blue-700 dark:text-blue-300 mb-2">
+                      Agent configured and ready to use.
+                    </p>
                     <Button 
                       size="sm" 
                       variant="outline" 
-                      onClick={() => navigate('/dashboard')}
+                      onClick={handleTestAgents}
+                      disabled={isTestingAgents}
                       className="w-full"
                     >
-                      <Settings className="h-3 w-3 mr-1" />
-                      Configure Agent
+                      {isTestingAgents ? (
+                        <>
+                          <TestTube className="h-3 w-3 mr-1 animate-pulse" />
+                          Testing Network...
+                        </>
+                      ) : (
+                        <>
+                          <TestTube className="h-3 w-3 mr-1" />
+                          Test Network Status
+                        </>
+                      )}
                     </Button>
                   </div>
                 )}

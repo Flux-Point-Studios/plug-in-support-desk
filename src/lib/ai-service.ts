@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 
 // HARDCODED FOR HACKATHON
 const AGENT_API_URL = 'https://api.fluxpointstudios.com/chat';
-const AGENT_API_KEY = '16dc5e5e6671ae253eded051fab30876ca44d23c8089af7a07679528ed21eee2';
+const AGENT_API_KEY = '6c3bb3eedc9441978bbc44af20f0b82d';
 
 export interface AgentSuggestions {
   name: string;

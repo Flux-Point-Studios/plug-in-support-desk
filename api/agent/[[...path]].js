@@ -1,41 +1,26 @@
-const cors = require('cors');
-const axios = require('axios');
-const { v4: uuidv4 } = require('uuid');
-
-// In-memory storage (Note: This will reset between invocations in serverless)
-// For production, use a database like Supabase
-const jobs = new Map();
+// Simple CORS headers function
+function setCorsHeaders(res) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+}
 
 // Configuration from environment variables
-const MASUMI_PAYMENT_URL = process.env.MASUMI_PAYMENT_URL || 'http://localhost:3001';
-const MASUMI_API_KEY = process.env.MASUMI_API_KEY;
-const FLUX_POINT_API_URL = process.env.FLUX_POINT_API_URL || 'https://api.fluxpointstudios.com/chat';
-const FLUX_POINT_API_KEY = process.env.FLUX_POINT_API_KEY;
-const AGENT_IDENTIFIER = process.env.AGENT_IDENTIFIER;
 const AGENT_PRICE = process.env.AGENT_PRICE || '1000000';
 
-// CORS middleware
-const corsMiddleware = cors({
-  origin: true,
-  methods: ['GET', 'POST', 'PATCH', 'OPTIONS'],
-  credentials: true
-});
-
-// Helper to run middleware
-function runMiddleware(req, res, fn) {
-  return new Promise((resolve, reject) => {
-    fn(req, res, (result) => {
-      if (result instanceof Error) {
-        return reject(result);
-      }
-      return resolve(result);
-    });
-  });
+// Simple UUID generator
+function generateId() {
+  return 'job_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
 }
 
 export default async function handler(req, res) {
-  // Run CORS middleware
-  await runMiddleware(req, res, corsMiddleware);
+  // Set CORS headers
+  setCorsHeaders(res);
+  
+  // Handle preflight requests
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
 
   const { path } = req.query;
   const endpoint = path ? path.join('/') : '';
@@ -120,16 +105,22 @@ export default async function handler(req, res) {
           });
         }
 
-        const jobId = uuidv4();
+        const jobId = generateId();
         
-        // For serverless, we'll process immediately and return
-        // In production, use a database to persist job state
-        const response = await processJobImmediate(input_data);
+        // For now, return a mock response to test the registration
+        // In production, this would call your actual AI service
+        const mockResponse = {
+          response: "This is a test response from the AI Support Agent. In production, this would connect to your actual AI service.",
+          metadata: {
+            confidence: 0.95,
+            sources: ['Flux Point Studios AI']
+          }
+        };
         
         return res.json({
           status: 'success',
           job_id: jobId,
-          result: response // Return result immediately for serverless
+          result: mockResponse
         });
 
       } catch (error) {
@@ -160,35 +151,5 @@ export default async function handler(req, res) {
         status: 'error',
         error: `Endpoint not found: ${req.method} /${endpoint}`
       });
-  }
-}
-
-// Process job immediately for serverless
-async function processJobImmediate(input_data) {
-  try {
-    const response = await axios.post(
-      FLUX_POINT_API_URL,
-      {
-        message: input_data.message,
-        session_id: input_data.context?.sessionId || uuidv4()
-      },
-      {
-        headers: {
-          'api-key': FLUX_POINT_API_KEY,
-          'Content-Type': 'application/json'
-        }
-      }
-    );
-
-    return {
-      response: response.data.response,
-      metadata: {
-        confidence: 0.95,
-        sources: ['Flux Point Studios AI']
-      }
-    };
-  } catch (error) {
-    console.error('Error processing request:', error);
-    throw error;
   }
 } 

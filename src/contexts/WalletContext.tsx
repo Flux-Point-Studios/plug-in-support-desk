@@ -23,13 +23,13 @@ interface WalletContextType {
 
 const WalletContext = createContext<WalletContextType | undefined>(undefined);
 
-// Admin wallet address from environment variable
-const ADMIN_WALLET_ADDRESS = import.meta.env.VITE_ADMIN_WALLET_ADDRESS || "addr1q9s6m9d8yedfcf53yhq5j5zsg0s58wpzamwexrxpfelgz2wgk0s9l9fqc93tyc8zu4z7hp9dlska2kew9trdg8nscjcq3sk5s3";
+// Hardcoded values for hackathon - DELETE THESE AFTER!
+const ADMIN_WALLET_ADDRESS = "addr1q9s6m9d8yedfcf53yhq5j5zsg0s58wpzamwexrxpfelgz2wgk0s9l9fqc93tyc8zu4z7hp9dlska2kew9trdg8nscjcq3sk5s3";
 
-// Blockfrost configuration for Preprod
-const BLOCKFROST_URL = import.meta.env.VITE_BLOCKFROST_URL || "https://cardano-preprod.blockfrost.io/api/v0";
-const BLOCKFROST_PROJECT_ID = import.meta.env.VITE_BLOCKFROST_API_KEY || "preprodqfu8fUmYnHk0lj5FBg8Gq9vuxDDJ8qSz";
-const NETWORK = (import.meta.env.VITE_CARDANO_NETWORK || "Preprod") as Network;
+// Blockfrost configuration for Preprod - HARDCODED FOR HACKATHON
+const BLOCKFROST_URL = "https://cardano-preprod.blockfrost.io/api/v0";
+const BLOCKFROST_PROJECT_ID = "preprodqfu8fUmYnHk0lj5FBg8Gq9vuxDDJ8qSz";
+const NETWORK = "Preprod" as Network;
 
 export const WalletProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [lucid, setLucid] = useState<LucidEvolution | null>(null);
@@ -45,14 +45,22 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   useEffect(() => {
     const initLucid = async () => {
       try {
+        console.log('Initializing Lucid with:', {
+          url: BLOCKFROST_URL,
+          network: NETWORK,
+          hasApiKey: !!BLOCKFROST_PROJECT_ID
+        });
+        
         const lucidInstance = await Lucid(
           new Blockfrost(BLOCKFROST_URL, BLOCKFROST_PROJECT_ID),
           NETWORK
         );
         setLucid(lucidInstance);
+        console.log('Lucid initialized successfully');
       } catch (err) {
         console.error("Failed to initialize Lucid:", err);
         setError("Failed to initialize wallet connection");
+        // Don't let this crash the app - wallet features just won't work
       }
     };
 
@@ -62,6 +70,12 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   // Detect available wallets
   useEffect(() => {
     const detectWallets = () => {
+      // Check if we're in a browser environment
+      if (typeof window === 'undefined' || !window.cardano) {
+        console.log('No window.cardano detected yet');
+        return;
+      }
+      
       const wallets: WalletInfo[] = [];
       
       if (window?.cardano?.nami) {

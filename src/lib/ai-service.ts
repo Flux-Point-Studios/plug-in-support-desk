@@ -1,8 +1,9 @@
 // AI Service for generating agent configurations
 import { supabase } from '@/integrations/supabase/client';
 
-const AGENT_API_URL = import.meta.env.VITE_AGENT_API_URL || 'https://api.fluxpointstudios.com/chat';
-const AGENT_API_KEY = import.meta.env.VITE_AGENT_API_KEY;
+// HARDCODED FOR HACKATHON
+const AGENT_API_URL = 'https://api.fluxpointstudios.com/chat';
+const AGENT_API_KEY = undefined; // Not needed for hackathon demo
 
 export interface AgentSuggestions {
   name: string;

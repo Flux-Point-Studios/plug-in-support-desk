@@ -1,10 +1,10 @@
 // Using native fetch instead of axios
 
-// Masumi configuration from environment variables
-const MASUMI_PAYMENT_URL = import.meta.env.VITE_MASUMI_PAYMENT_URL || 'https://payment.masumi.network';
-const MASUMI_API_KEY = import.meta.env.VITE_MASUMI_API_KEY;
-const MASUMI_VKEY = import.meta.env.VITE_MASUMI_VKEY;
-const MASUMI_NETWORK = import.meta.env.VITE_MASUMI_NETWORK || 'Preprod';
+// Masumi configuration - HARDCODED FOR HACKATHON
+const MASUMI_PAYMENT_URL = 'https://payment.masumi.network';
+const MASUMI_API_KEY = undefined; // Not needed for hackathon demo
+const MASUMI_VKEY = undefined; // Not needed for hackathon demo
+const MASUMI_NETWORK = 'Preprod';
 
 interface RegisterAgentParams {
   name: string;

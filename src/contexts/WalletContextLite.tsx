@@ -21,8 +21,8 @@ interface WalletContextType {
 
 const WalletContext = createContext<WalletContextType | undefined>(undefined);
 
-// Admin wallet address from environment variable
-const ADMIN_WALLET_ADDRESS = import.meta.env.VITE_ADMIN_WALLET_ADDRESS || "addr1q9s6m9d8yedfcf53yhq5j5zsg0s58wpzamwexrxpfelgz2wgk0s9l9fqc93tyc8zu4z7hp9dlska2kew9trdg8nscjcq3sk5s3";
+// Hardcoded values for hackathon - DELETE THESE AFTER!
+const ADMIN_WALLET_ADDRESS = "addr1q9s6m9d8yedfcf53yhq5j5zsg0s58wpzamwexrxpfelgz2wgk0s9l9fqc93tyc8zu4z7hp9dlska2kew9trdg8nscjcq3sk5s3";
 
 export const WalletProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [walletAddress, setWalletAddress] = useState<string | null>(null);

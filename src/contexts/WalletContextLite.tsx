@@ -38,71 +38,43 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     const detectWallets = () => {
       const wallets: WalletInfo[] = [];
       
-      if (window?.cardano?.nami) {
-        wallets.push({ 
-          key: 'nami', 
-          name: window.cardano.nami.name || 'Nami',
-          icon: window.cardano.nami.icon
-        });
-      }
-      
-      if (window?.cardano?.eternl) {
-        wallets.push({ 
-          key: 'eternl', 
-          name: window.cardano.eternl.name || 'Eternl',
-          icon: window.cardano.eternl.icon
-        });
-      }
-      
-      if (window?.cardano?.flint) {
-        wallets.push({ 
-          key: 'flint', 
-          name: window.cardano.flint.name || 'Flint',
-          icon: window.cardano.flint.icon
-        });
-      }
-      
-      if (window?.cardano?.yoroi) {
-        wallets.push({ 
-          key: 'yoroi', 
-          name: window.cardano.yoroi.name || 'Yoroi',
-          icon: window.cardano.yoroi.icon
-        });
-      }
-      
-      if (window?.cardano?.lace) {
-        wallets.push({ 
-          key: 'lace', 
-          name: window.cardano.lace.name || 'Lace',
-          icon: window.cardano.lace.icon
-        });
-      }
-      
-      if (window?.cardano?.typhon) {
-        wallets.push({ 
-          key: 'typhon', 
-          name: window.cardano.typhon.name || 'Typhon',
-          icon: window.cardano.typhon.icon
-        });
-      }
+      if (typeof window !== 'undefined' && window.cardano) {
+        // Check for various Cardano wallets
+        const walletChecks = [
+          { key: 'nami', name: 'Nami' },
+          { key: 'eternl', name: 'Eternl' },
+          { key: 'flint', name: 'Flint' },
+          { key: 'yoroi', name: 'Yoroi' },
+          { key: 'lace', name: 'Lace' },
+          { key: 'typhon', name: 'Typhon' },
+          { key: 'gerowallet', name: 'GeroWallet' },
+          { key: 'ccvault', name: 'Eternl (CCVault)' }
+        ];
 
-      // Handle Eternl's duplicate exposure (ccvault)
-      if (window?.cardano?.ccvault && !wallets.find(w => w.key === 'eternl')) {
-        wallets.push({ 
-          key: 'ccvault', 
-          name: window.cardano.ccvault.name || 'Eternl (ccvault)',
-          icon: window.cardano.ccvault.icon
+        walletChecks.forEach(({ key, name }) => {
+          const walletApi = window.cardano?.[key];
+          if (walletApi && typeof walletApi.enable === 'function') {
+            wallets.push({
+              key,
+              name: walletApi.name || name,
+              icon: walletApi.icon
+            });
+          }
         });
       }
 
       setAvailableWallets(wallets);
     };
 
-    // Check immediately and after a short delay (for slow-loading extensions)
+    // Check immediately and after delays for slow-loading extensions
     detectWallets();
-    const timer = setTimeout(detectWallets, 1000);
+    const timer1 = setTimeout(detectWallets, 1000);
+    const timer2 = setTimeout(detectWallets, 3000);
     
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer1);
+      clearTimeout(timer2);
+    };
   }, []);
 
   const connectWallet = async (walletKey: string) => {
@@ -116,6 +88,8 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         throw new Error(`Wallet ${walletKey} not found. Please ensure it's installed and enabled.`);
       }
 
+      console.log(`Connecting to ${walletKey} wallet...`);
+
       // Enable the wallet
       const api = await walletApi.enable();
       if (!api) {
@@ -128,30 +102,60 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         throw new Error("No addresses found in wallet");
       }
 
-      // Convert hex address to bech32
+      // Get first address and convert from hex to bech32
       const addressHex = usedAddresses[0];
-      // For now, we'll use a simplified approach - store the hex and wallet name
-      const simplifiedAddress = `${walletKey}_${addressHex.slice(0, 20)}...${addressHex.slice(-20)}`;
       
-      setWalletAddress(simplifiedAddress);
+      // For now, use a simplified approach - we'll display the bech32 if available, otherwise hex
+      let displayAddress = addressHex;
+      try {
+        // Try to get bech32 address if the wallet supports it
+        const rewardAddresses = await api.getRewardAddresses();
+        if (rewardAddresses && rewardAddresses.length > 0) {
+          // Use a more readable format
+          displayAddress = `addr1...${addressHex.slice(-20)}`;
+        }
+      } catch (e) {
+        // Fallback to simplified hex display
+        displayAddress = `${walletKey}_${addressHex.slice(0, 20)}...${addressHex.slice(-20)}`;
+      }
+
+      setWalletAddress(displayAddress);
       setPaymentKeyHash(addressHex.slice(0, 56)); // Simplified payment key hash
       
-      // Check if this is the admin wallet (simplified check)
-      // In production, you'd decode the hex address properly
-      setIsAdmin(true); // For now, grant admin to all wallets
-      localStorage.setItem('isAdmin', 'true');
+      // Check if this is the admin wallet
+      const isAdminWallet = displayAddress === ADMIN_WALLET_ADDRESS || addressHex === ADMIN_WALLET_ADDRESS;
+      setIsAdmin(isAdminWallet);
       
-      // Store wallet connection info
+      // Store connection info
       setConnectedWallet(walletKey);
-      localStorage.setItem('walletAddress', simplifiedAddress);
+      localStorage.setItem('walletAddress', displayAddress);
+      localStorage.setItem('walletAddressHex', addressHex);
       localStorage.setItem('connectedWallet', walletKey);
-      localStorage.setItem('walletApi', addressHex);
+      localStorage.setItem('isAdmin', isAdminWallet.toString());
+      localStorage.setItem('paymentKeyHash', addressHex.slice(0, 56));
       
-      console.log(`Successfully connected to ${walletKey} wallet`);
+      console.log(`Successfully connected to ${walletKey} wallet on Preprod network`);
+      
+      // Verify network (optional check)
+      try {
+        const networkId = await api.getNetworkId();
+        if (networkId !== 0) { // 0 = Preprod, 1 = Mainnet
+          console.warn(`Wallet is on network ${networkId}, expected Preprod (0)`);
+          // Don't throw error, just warn
+        }
+      } catch (e) {
+        // Network check not critical
+      }
       
     } catch (err: any) {
       console.error("Failed to connect wallet:", err);
       setError(err.message || "Failed to connect wallet");
+      
+      // Clean up on error
+      setWalletAddress(null);
+      setPaymentKeyHash(null);
+      setIsAdmin(false);
+      setConnectedWallet(null);
     } finally {
       setIsConnecting(false);
     }
@@ -162,10 +166,16 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     setPaymentKeyHash(null);
     setIsAdmin(false);
     setConnectedWallet(null);
+    setError(null);
+    
+    // Clear storage
     localStorage.removeItem('walletAddress');
+    localStorage.removeItem('walletAddressHex');
     localStorage.removeItem('connectedWallet');
     localStorage.removeItem('isAdmin');
-    localStorage.removeItem('walletApi');
+    localStorage.removeItem('paymentKeyHash');
+    
+    console.log("Wallet disconnected");
   };
 
   const signMessage = async (message: string): Promise<string | null> => {
@@ -181,7 +191,7 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       }
 
       const api = await walletApi.enable();
-      const addressHex = localStorage.getItem('walletApi');
+      const addressHex = localStorage.getItem('walletAddressHex');
       
       if (!addressHex) {
         throw new Error("Address not found");
@@ -207,22 +217,36 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
   // Check for existing wallet connection on mount
   useEffect(() => {
-    const savedAddress = localStorage.getItem('walletAddress');
-    const savedWallet = localStorage.getItem('connectedWallet');
-    const savedAdmin = localStorage.getItem('isAdmin');
-    
-    if (savedAddress && savedWallet) {
-      setWalletAddress(savedAddress);
-      setConnectedWallet(savedWallet);
-      if (savedAdmin === 'true') {
-        setIsAdmin(true);
-      }
+    const restoreConnection = async () => {
+      const savedAddress = localStorage.getItem('walletAddress');
+      const savedWallet = localStorage.getItem('connectedWallet');
+      const savedAdmin = localStorage.getItem('isAdmin');
+      const savedPaymentKeyHash = localStorage.getItem('paymentKeyHash');
       
-      const addressHex = localStorage.getItem('walletApi');
-      if (addressHex) {
-        setPaymentKeyHash(addressHex.slice(0, 56));
+      if (savedAddress && savedWallet) {
+        try {
+          // Try to restore connection
+          const walletApi = window.cardano?.[savedWallet];
+          if (walletApi) {
+            // Just restore from localStorage without re-enabling
+            // User can reconnect if needed
+            setWalletAddress(savedAddress);
+            setConnectedWallet(savedWallet);
+            setIsAdmin(savedAdmin === 'true');
+            if (savedPaymentKeyHash) {
+              setPaymentKeyHash(savedPaymentKeyHash);
+            }
+            console.log(`Restored connection to ${savedWallet} wallet`);
+          }
+        } catch (err) {
+          console.error("Failed to restore wallet connection:", err);
+          // Clear stored data on error
+          disconnectWallet();
+        }
       }
-    }
+    };
+
+    restoreConnection();
   }, []);
 
   return (

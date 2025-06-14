@@ -8,6 +8,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { 
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator
+} from "@/components/ui/dropdown-menu";
+import { 
   Bot, 
   Wallet, 
   Search, 
@@ -20,7 +27,8 @@ import {
   Shield,
   Loader2,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  ChevronDown
 } from "lucide-react";
 import { toast } from "sonner";
 import { useWallet } from "@/contexts/WalletContextLite";
@@ -42,7 +50,7 @@ interface AgentConfig {
 }
 
 export function AgentSelectionModal({ open, onOpenChange, onAgentSelected }: AgentSelectionModalProps) {
-  const { walletAddress, isAdmin } = useWallet();
+  const { walletAddress, isAdmin, connectWallet, availableWallets, isConnecting, error } = useWallet();
   const [agents, setAgents] = useState<MasumiAgent[]>([]);
   const [filteredAgents, setFilteredAgents] = useState<MasumiAgent[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -70,6 +78,13 @@ export function AgentSelectionModal({ open, onOpenChange, onAgentSelected }: Age
     filterAgents();
     setCurrentPage(1); // Reset to first page when filters change
   }, [agents, searchTerm, showSupportOnly]);
+
+  // Handle wallet connection errors
+  useEffect(() => {
+    if (error) {
+      toast.error(`Wallet connection failed: ${error}`);
+    }
+  }, [error]);
 
   const loadAgents = async () => {
     setIsLoading(true);
@@ -543,16 +558,105 @@ export function AgentSelectionModal({ open, onOpenChange, onAgentSelected }: Age
                   <span>Network:</span>
                   <span className="text-orange-500 font-medium">Cardano Preprod</span>
                 </div>
-                <div className="flex justify-between">
+                <div className="flex justify-between items-center">
                   <span>Wallet:</span>
-                  <span className="text-xs font-mono">
-                    {walletAddress ? `${walletAddress.slice(0, 8)}...${walletAddress.slice(-8)}` : 'Not connected'}
-                  </span>
+                  {walletAddress ? (
+                    <div className="flex items-center space-x-2">
+                      <span className="text-xs font-mono">
+                        {walletAddress.slice(0, 8)}...{walletAddress.slice(-8)}
+                      </span>
+                      <Badge variant="default" className="bg-green-600">
+                        <CheckCircle className="h-3 w-3 mr-1" />
+                        Connected
+                      </Badge>
+                    </div>
+                  ) : (
+                    <div className="flex items-center space-x-2">
+                      <span className="text-xs text-muted-foreground">Not connected</span>
+                      {availableWallets.length > 0 && (
+                        <>
+                          {availableWallets.length === 1 ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => connectWallet(availableWallets[0].key)}
+                              disabled={isConnecting}
+                              className="h-6 px-2 text-xs"
+                            >
+                              {isConnecting ? (
+                                <>
+                                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                  Connecting...
+                                </>
+                              ) : (
+                                <>
+                                  <Wallet className="h-3 w-3 mr-1" />
+                                  Connect {availableWallets[0].name}
+                                </>
+                              )}
+                            </Button>
+                          ) : (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={isConnecting}
+                                  className="h-6 px-2 text-xs"
+                                >
+                                  {isConnecting ? (
+                                    <>
+                                      <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                      Connecting...
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Wallet className="h-3 w-3 mr-1" />
+                                      Connect Wallet
+                                      <ChevronDown className="h-3 w-3 ml-1" />
+                                    </>
+                                  )}
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent>
+                                <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                                  Select a wallet
+                                </div>
+                                <DropdownMenuSeparator />
+                                {availableWallets.map((wallet) => (
+                                  <DropdownMenuItem 
+                                    key={wallet.key} 
+                                    onClick={() => connectWallet(wallet.key)}
+                                    disabled={isConnecting}
+                                  >
+                                    {wallet.icon && (
+                                      <img 
+                                        src={wallet.icon} 
+                                        alt={wallet.name} 
+                                        className="h-4 w-4 mr-2" 
+                                      />
+                                    )}
+                                    {wallet.name}
+                                  </DropdownMenuItem>
+                                ))}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  )}
                 </div>
                 {isAdmin && (
                   <div className="flex items-center space-x-2 text-blue-600 bg-blue-50 dark:bg-blue-950/20 p-2 rounded">
                     <Shield className="h-4 w-4" />
                     <span className="text-sm">Admin mode: Payment will be bypassed</span>
+                  </div>
+                )}
+                {!walletAddress && (
+                  <div className="flex items-center space-x-2 text-amber-600 bg-amber-50 dark:bg-amber-950/20 p-2 rounded">
+                    <AlertCircle className="h-4 w-4" />
+                    <span className="text-sm">Please connect your Preprod wallet to continue</span>
                   </div>
                 )}
               </CardContent>

@@ -6,7 +6,7 @@ import { WalletConnect } from "@/components/WalletConnect";
 import { Bot, MessageSquare, User, Shield, CheckCircle, AlertCircle, Zap, Search, Clock, Wallet, Settings, FileText } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
-import { useWallet } from "@/contexts/WalletContextLite";
+import { useWallet } from "@/contexts/WalletContext";
 import { toast } from "sonner";
 import { AgentSelectionModal } from "@/components/AgentSelectionModal";
 import { type MasumiAgent } from "@/lib/masumi-agent-discovery";

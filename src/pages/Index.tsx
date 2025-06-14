@@ -8,7 +8,7 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { WalletConnect } from "@/components/WalletConnect";
 import { Bot, Shield, Zap, Check, ArrowRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { useWallet } from "@/contexts/WalletContextLite";
+import { useWallet } from "@/contexts/WalletContext";
 import { Separator } from "@/components/ui/separator";
 
 const Index = () => {

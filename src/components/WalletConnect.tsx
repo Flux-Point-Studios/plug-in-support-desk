@@ -7,7 +7,7 @@ import {
   DropdownMenuSeparator
 } from "@/components/ui/dropdown-menu";
 import { Wallet, LogOut, Shield, AlertCircle } from "lucide-react";
-import { useWallet } from "@/contexts/WalletContextLite";
+import { useWallet } from "@/contexts/WalletContext";
 import { useNavigate } from "react-router-dom";
 import { useEffect } from "react";
 

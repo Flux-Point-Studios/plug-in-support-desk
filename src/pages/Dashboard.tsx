@@ -35,12 +35,9 @@ const Dashboard = () => {
     lastActivity: null as string | null
   });
 
-  // Redirect to home if no wallet is connected
-  useEffect(() => {
-    if (!walletAddress) {
-      navigate("/");
-    }
-  }, [walletAddress, navigate]);
+  // Note: Removed wallet redirect for demo mode
+  // Users can now access dashboard without wallet to browse agents
+  // Wallet connection is only required for actual payments
 
   // Load active agent from localStorage on mount
   useEffect(() => {

@@ -8,7 +8,7 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { WalletConnect } from "@/components/WalletConnect";
 import { Bot, Shield, Zap, Check, ArrowRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { useWallet } from "@/contexts/WalletContextSimple";
+import { useWallet } from "@/contexts/WalletContextLite";
 import { Separator } from "@/components/ui/separator";
 
 const Index = () => {
@@ -59,12 +59,12 @@ const Index = () => {
             Provide instant, accurate support to your customers 24/7.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Button size="lg" className="bg-blue-600 hover:bg-blue-700" onClick={() => document.getElementById('auth-section')?.scrollIntoView({ behavior: 'smooth' })}>
-              Get Started
+            <Button size="lg" className="bg-blue-600 hover:bg-blue-700" onClick={() => navigate('/dashboard')}>
+              Try Demo
               <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
-            <Button size="lg" variant="outline" className="text-white border-white hover:bg-white hover:text-black">
-              Watch Demo
+            <Button size="lg" variant="outline" className="text-white border-white hover:bg-white hover:text-black" onClick={() => document.getElementById('auth-section')?.scrollIntoView({ behavior: 'smooth' })}>
+              Sign Up
             </Button>
           </div>
         </div>
@@ -276,6 +276,23 @@ const Index = () => {
                   </form>
                 </TabsContent>
               </Tabs>
+              
+              {/* Demo Access */}
+              <div className="mt-6 p-4 bg-green-600/10 border border-green-600/20 rounded-lg">
+                <div className="text-center">
+                  <h3 className="text-green-400 font-semibold mb-2">🚀 Quick Demo Access</h3>
+                  <p className="text-slate-300 text-sm mb-3">
+                    Skip authentication and explore the AI agent marketplace immediately
+                  </p>
+                  <Button 
+                    onClick={() => navigate('/dashboard')} 
+                    className="w-full bg-green-600 hover:bg-green-700"
+                  >
+                    <Bot className="w-4 h-4 mr-2" />
+                    Enter Demo Mode
+                  </Button>
+                </div>
+              </div>
             </CardContent>
           </Card>
         </div>

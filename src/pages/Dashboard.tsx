@@ -1,31 +1,39 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { WalletConnect } from "@/components/WalletConnect";
-import { Bot, Upload, Settings, MessageSquare, Plus, FileText, User, Shield, Copy, CheckCircle, AlertCircle, Sparkles, RefreshCw } from "lucide-react";
+import { Bot, MessageSquare, User, Shield, CheckCircle, AlertCircle, Zap, Search, Clock, Wallet, Settings, FileText } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { useWallet } from "@/contexts/WalletContextLite";
 import { toast } from "sonner";
-import { generateAgentConfig, regenerateField } from "@/lib/ai-service";
+import { AgentSelectionModal } from "@/components/AgentSelectionModal";
+import { type MasumiAgent } from "@/lib/masumi-agent-discovery";
+
+interface AgentConfig {
+  businessContext: string;
+  documents: File[];
+}
+
+interface ActiveAgent {
+  agent: MasumiAgent;
+  config: AgentConfig;
+  activatedAt: string;
+  paymentReceipt?: any;
+}
 
 const Dashboard = () => {
   const navigate = useNavigate();
-  const { walletAddress, paymentKeyHash, isAdmin, connectedWallet, signMessage } = useWallet();
-  const [businessPrompt, setBusinessPrompt] = useState("");
-  const [agentName, setAgentName] = useState("");
-  const [agentBio, setAgentBio] = useState("");
-  const [agentDescription, setAgentDescription] = useState("");
-  const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
-  const [messageToSign, setMessageToSign] = useState("");
-  const [signature, setSignature] = useState("");
-  const [copied, setCopied] = useState(false);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [isRegenerating, setIsRegenerating] = useState<string | null>(null);
+  const { walletAddress, isAdmin } = useWallet();
+  const [isAgentModalOpen, setIsAgentModalOpen] = useState(false);
+  const [activeAgent, setActiveAgent] = useState<ActiveAgent | null>(null);
+  const [agentStats, setAgentStats] = useState({
+    totalQueries: 0,
+    avgResponseTime: "< 1s",
+    customerSatisfaction: "N/A",
+    lastActivity: null as string | null
+  });
 
   // Redirect to home if no wallet is connected
   useEffect(() => {
@@ -34,155 +42,78 @@ const Dashboard = () => {
     }
   }, [walletAddress, navigate]);
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      setUploadedFiles(Array.from(e.target.files));
-    }
-  };
+  // Load active agent from localStorage on mount
+  useEffect(() => {
+    loadActiveAgent();
+  }, []);
 
-  const handleCreateAgent = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!agentName || !agentBio || !agentDescription) {
-      toast.error("Please fill in all required fields");
-      return;
-    }
-    
-    // Import the createAgent function
-    const { createAgent } = await import('@/lib/agents');
-    
+  const loadActiveAgent = () => {
     try {
-      toast.loading("Creating agent and registering with Masumi...");
+      const savedAgent = localStorage.getItem('masumi-active-agent');
+      const savedReceipt = localStorage.getItem('masumi-payment-receipt');
       
-      const agent = await createAgent({
-        name: agentName,
-        description: agentDescription,
-        bio: agentBio,
-        documents: uploadedFiles
-      });
-      
-      toast.dismiss();
-      toast.success(`Agent "${agent.name}" created and registered successfully!`);
-      
-      // Reset form
-      setAgentName("");
-      setAgentBio("");
-      setAgentDescription("");
-      setUploadedFiles([]);
-      
-      // TODO: Refresh agents list
-    } catch (error: any) {
-      toast.dismiss();
-      toast.error(error.message || "Failed to create agent");
+      if (savedAgent) {
+        const agentData = JSON.parse(savedAgent);
+        const receiptData = savedReceipt ? JSON.parse(savedReceipt) : null;
+        
+        setActiveAgent({
+          ...agentData,
+          paymentReceipt: receiptData
+        });
+        
+        toast.success(`Loaded active agent: ${agentData.agent.name}`);
+      }
+    } catch (error) {
+      console.error('Failed to load active agent:', error);
     }
   };
 
-  const handleSignMessage = async () => {
-    if (!messageToSign) {
-      toast.error("Please enter a message to sign");
-      return;
-    }
+  const handleAgentSelected = (agent: MasumiAgent, config: AgentConfig) => {
+    const activeAgentData: ActiveAgent = {
+      agent,
+      config,
+      activatedAt: new Date().toISOString()
+    };
 
-    const sig = await signMessage(messageToSign);
-    if (sig) {
-      setSignature(sig);
-      toast.success("Message signed successfully!");
-    } else {
-      toast.error("Failed to sign message");
-    }
+    // Save to localStorage
+    localStorage.setItem('masumi-active-agent', JSON.stringify(activeAgentData));
+    
+    setActiveAgent(activeAgentData);
+    toast.success(`Agent "${agent.name}" is now active and ready to help customers!`);
   };
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-    setCopied(true);
-    toast.success("Copied to clipboard!");
-    setTimeout(() => setCopied(false), 2000);
+  const handleDeactivateAgent = () => {
+    localStorage.removeItem('masumi-active-agent');
+    localStorage.removeItem('masumi-payment-receipt');
+    setActiveAgent(null);
+    setAgentStats({
+      totalQueries: 0,
+      avgResponseTime: "< 1s",
+      customerSatisfaction: "N/A",
+      lastActivity: null
+    });
+    toast.success("Agent deactivated");
+  };
+
+  const getPriceDisplay = (agent: MasumiAgent) => {
+    const pricing = agent.AgentPricing?.FixedPricing?.Amounts?.[0];
+    if (!pricing) return "Free";
+    
+    const amount = parseInt(pricing.amount);
+    if (pricing.unit === 'lovelace' || pricing.unit === '') {
+      return `${amount / 1000000} ADA`;
+    }
+    return `${amount} ${pricing.unit}`;
   };
 
   const formatAddress = (address: string) => {
     if (!address) return '';
-    // Handle simplified wallet addresses from WalletContextLite
     if (address.includes('_')) {
       const parts = address.split('_');
       return `${parts[0]} (${parts[1]})`;
     }
     return `${address.slice(0, 15)}...${address.slice(-15)}`;
   };
-
-  const handleGenerateAgentConfig = async () => {
-    if (!businessPrompt.trim()) {
-      toast.error("Please describe your business first");
-      return;
-    }
-
-    setIsGenerating(true);
-    try {
-      const suggestions = await generateAgentConfig({ businessPrompt });
-      
-      setAgentName(suggestions.name);
-      setAgentBio(suggestions.bio);
-      setAgentDescription(suggestions.description);
-      
-      toast.success("AI suggestions generated! Feel free to edit them.");
-    } catch (error: any) {
-      toast.error(error.message || "Failed to generate suggestions");
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  const handleRegenerateField = async (field: 'name' | 'bio' | 'description') => {
-    if (!businessPrompt.trim()) {
-      toast.error("Please describe your business first");
-      return;
-    }
-
-    setIsRegenerating(field);
-    try {
-      const newValue = await regenerateField(field, businessPrompt, {
-        name: agentName,
-        bio: agentBio,
-        description: agentDescription
-      });
-      
-      switch (field) {
-        case 'name':
-          setAgentName(newValue);
-          break;
-        case 'bio':
-          setAgentBio(newValue);
-          break;
-        case 'description':
-          setAgentDescription(newValue);
-          break;
-      }
-      
-      toast.success(`${field.charAt(0).toUpperCase() + field.slice(1)} regenerated!`);
-    } catch (error: any) {
-      toast.error(error.message || `Failed to regenerate ${field}`);
-    } finally {
-      setIsRegenerating(null);
-    }
-  };
-
-  const mockAgents = [
-    {
-      id: 1,
-      name: "TechSupport Pro",
-      bio: "Expert in software troubleshooting",
-      status: "active",
-      conversations: 143,
-      satisfaction: 4.8
-    },
-    {
-      id: 2,
-      name: "Product Guide",
-      bio: "Specialized in product documentation",
-      status: "training",
-      conversations: 87,
-      satisfaction: 4.6
-    }
-  ];
 
   return (
     <div className="min-h-screen bg-background">
@@ -236,167 +167,122 @@ const Dashboard = () => {
         {/* Dashboard Header */}
         <div className="mb-8">
           <h1 className="text-4xl font-bold mb-2">AI Agent Dashboard</h1>
-          <p className="text-muted-foreground">Create and manage your custom AI support agents</p>
+          <p className="text-muted-foreground">Find and activate AI agents from the Masumi network</p>
         </div>
 
         <div className="grid lg:grid-cols-3 gap-8">
-          {/* Agent Creation Form */}
+          {/* Main Content */}
           <div className="lg:col-span-2">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
-                  <Plus className="h-5 w-5" />
-                  <span>Create New Agent</span>
-                </CardTitle>
-                <CardDescription>
-                  Configure your AI agent with custom knowledge and personality
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <form onSubmit={handleCreateAgent} className="space-y-6">
-                  {/* AI Assistant Section */}
-                  <div className="p-4 bg-accent/50 rounded-lg border border-border">
-                    <div className="flex items-center gap-2 mb-3">
-                      <Sparkles className="h-5 w-5 text-primary" />
-                      <h3 className="font-semibold">AI Assistant</h3>
-                    </div>
-                    <div>
-                      <Label htmlFor="business-prompt">Describe Your Business</Label>
-                      <Textarea
-                        id="business-prompt"
-                        placeholder="e.g., We're a SaaS company providing project management tools for remote teams. We need help with onboarding, feature questions, and troubleshooting..."
-                        value={businessPrompt}
-                        onChange={(e) => setBusinessPrompt(e.target.value)}
-                        rows={3}
-                        className="mt-2"
-                      />
-                      <Button
-                        type="button"
-                        onClick={handleGenerateAgentConfig}
-                        disabled={isGenerating || !businessPrompt.trim()}
-                        className="mt-3 w-full"
-                        variant="secondary"
-                      >
-                        {isGenerating ? (
-                          <>
-                            <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                            Generating...
-                          </>
-                        ) : (
-                          <>
-                            <Sparkles className="h-4 w-4 mr-2" />
-                            Generate Agent Configuration
-                          </>
-                                                  )}
-                        </Button>
+            {!activeAgent ? (
+              /* No Active Agent */
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center space-x-2">
+                    <Search className="h-5 w-5" />
+                    <span>Find AI Agent</span>
+                  </CardTitle>
+                  <CardDescription>
+                    Discover and activate an AI agent from the Masumi network to power your customer support
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="text-center py-8">
+                    <Bot className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
+                    <h3 className="text-lg font-semibold mb-2">No Active Agent</h3>
+                    <p className="text-muted-foreground mb-6">
+                      Find and activate an AI agent to start providing intelligent customer support.
+                    </p>
+                    <Button onClick={() => setIsAgentModalOpen(true)} size="lg">
+                      <Search className="h-4 w-4 mr-2" />
+                      Find Agent
+                    </Button>
+                  </div>
+
+                  <div className="border-t pt-6">
+                    <h4 className="font-semibold mb-3">How it works:</h4>
+                    <div className="space-y-3">
+                      <div className="flex items-start space-x-3">
+                        <div className="bg-primary text-primary-foreground rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold">1</div>
+                        <div>
+                          <p className="font-medium">Browse Available Agents</p>
+                          <p className="text-sm text-muted-foreground">Discover AI agents on the Masumi network with different capabilities</p>
+                        </div>
                       </div>
-                      {/* Temporary debug button */}
-
+                      <div className="flex items-start space-x-3">
+                        <div className="bg-primary text-primary-foreground rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold">2</div>
+                        <div>
+                          <p className="font-medium">Select & Configure</p>
+                          <p className="text-sm text-muted-foreground">Choose an agent and provide your business context</p>
+                        </div>
+                      </div>
+                      <div className="flex items-start space-x-3">
+                        <div className="bg-primary text-primary-foreground rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold">3</div>
+                        <div>
+                          <p className="font-medium">Pay & Activate</p>
+                          <p className="text-sm text-muted-foreground">Pay the agent fee from your connected wallet</p>
+                        </div>
+                      </div>
+                      <div className="flex items-start space-x-3">
+                        <div className="bg-primary text-primary-foreground rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold">4</div>
+                        <div>
+                          <p className="font-medium">Start Helping Customers</p>
+                          <p className="text-sm text-muted-foreground">Your agent is ready to answer customer questions</p>
+                        </div>
+                      </div>
                     </div>
-
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <Label htmlFor="agent-name">Agent Name</Label>
-                      {agentName && (
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => handleRegenerateField('name')}
-                          disabled={isRegenerating === 'name'}
-                        >
-                          <RefreshCw className={`h-3 w-3 mr-1 ${isRegenerating === 'name' ? 'animate-spin' : ''}`} />
-                          Regenerate
-                        </Button>
-                      )}
-                    </div>
-                    <Input
-                      id="agent-name"
-                      placeholder="e.g., TechSupport Pro"
-                      value={agentName}
-                      onChange={(e) => setAgentName(e.target.value)}
-                      required
-                    />
                   </div>
-
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <Label htmlFor="agent-bio">Agent Bio</Label>
-                      {agentBio && (
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => handleRegenerateField('bio')}
-                          disabled={isRegenerating === 'bio'}
-                        >
-                          <RefreshCw className={`h-3 w-3 mr-1 ${isRegenerating === 'bio' ? 'animate-spin' : ''}`} />
-                          Regenerate
-                        </Button>
-                      )}
-                    </div>
-                    <Input
-                      id="agent-bio"
-                      placeholder="Brief description of your agent's expertise"
-                      value={agentBio}
-                      onChange={(e) => setAgentBio(e.target.value)}
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <Label htmlFor="agent-description">Detailed Description</Label>
-                      {agentDescription && (
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => handleRegenerateField('description')}
-                          disabled={isRegenerating === 'description'}
-                        >
-                          <RefreshCw className={`h-3 w-3 mr-1 ${isRegenerating === 'description' ? 'animate-spin' : ''}`} />
-                          Regenerate
-                        </Button>
-                      )}
-                    </div>
-                    <Textarea
-                      id="agent-description"
-                      placeholder="Describe your agent's personality, communication style, and specific knowledge areas..."
-                      value={agentDescription}
-                      onChange={(e) => setAgentDescription(e.target.value)}
-                      rows={4}
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <Label htmlFor="documentation">Upload Documentation</Label>
-                    <div className="mt-2 border-2 border-dashed border-border rounded-lg p-6 text-center hover:border-primary/50 transition-colors">
-                      <Upload className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
-                      <p className="text-sm text-muted-foreground mb-2">
-                        Drop your files here or click to browse
-                      </p>
-                      <Input
-                        id="documentation"
-                        type="file"
-                        multiple
-                        accept=".pdf,.txt,.doc,.docx,.md"
-                        onChange={handleFileUpload}
-                        className="hidden"
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => document.getElementById('documentation')?.click()}
-                      >
-                        Choose Files
+                </CardContent>
+              </Card>
+            ) : (
+              /* Active Agent Dashboard */
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center space-x-2">
+                    <CheckCircle className="h-5 w-5 text-green-500" />
+                    <span>Active Agent</span>
+                  </CardTitle>
+                  <CardDescription>
+                    Your AI agent is active and ready to help customers
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  {/* Agent Info */}
+                  <div className="bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
+                    <div className="flex items-start justify-between">
+                      <div className="space-y-2">
+                        <div className="flex items-center space-x-2">
+                          <h3 className="text-lg font-semibold">{activeAgent.agent.name}</h3>
+                          <Badge variant="default" className="bg-green-600">Active</Badge>
+                        </div>
+                        <p className="text-sm text-muted-foreground">{activeAgent.agent.description}</p>
+                        <div className="flex items-center space-x-4 text-sm">
+                          <span><strong>Capability:</strong> {activeAgent.agent.Capability?.name}</span>
+                          <span><strong>Price:</strong> {getPriceDisplay(activeAgent.agent)} per query</span>
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          Activated: {new Date(activeAgent.activatedAt).toLocaleString()}
+                        </div>
+                      </div>
+                      <Button variant="outline" size="sm" onClick={handleDeactivateAgent}>
+                        Deactivate
                       </Button>
                     </div>
-                    {uploadedFiles.length > 0 && (
-                      <div className="mt-4 space-y-2">
-                        <p className="text-sm font-medium">Uploaded Files:</p>
-                        {uploadedFiles.map((file, index) => (
+                  </div>
+
+                  {/* Business Context */}
+                  <div>
+                    <h4 className="font-semibold mb-2">Business Context</h4>
+                    <div className="bg-muted/50 rounded-lg p-3">
+                      <p className="text-sm">{activeAgent.config.businessContext}</p>
+                    </div>
+                  </div>
+
+                  {/* Uploaded Documents */}
+                  {activeAgent.config.documents.length > 0 && (
+                    <div>
+                      <h4 className="font-semibold mb-2">Uploaded Documents</h4>
+                      <div className="space-y-2">
+                        {activeAgent.config.documents.map((file, index) => (
                           <div key={index} className="flex items-center space-x-2 text-sm">
                             <FileText className="h-4 w-4" />
                             <span>{file.name}</span>
@@ -404,81 +290,122 @@ const Dashboard = () => {
                           </div>
                         ))}
                       </div>
-                    )}
-                  </div>
+                    </div>
+                  )}
 
-                  <Button type="submit" className="w-full" size="lg">
-                    <Bot className="h-4 w-4 mr-2" />
-                    Create AI Agent
-                  </Button>
-                </form>
-              </CardContent>
-            </Card>
+                  {/* Actions */}
+                  <div className="flex space-x-3">
+                    <Button onClick={() => navigate("/support")} className="flex-1">
+                      <MessageSquare className="h-4 w-4 mr-2" />
+                      Test Agent
+                    </Button>
+                    <Button variant="outline" onClick={() => setIsAgentModalOpen(true)}>
+                      <Search className="h-4 w-4 mr-2" />
+                      Change Agent
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </div>
 
-          {/* Existing Agents */}
+          {/* Sidebar */}
           <div>
-            <Card>
-              <CardHeader>
-                <CardTitle>Your AI Agents</CardTitle>
-                <CardDescription>Manage your existing support agents</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {mockAgents.map((agent) => (
-                  <div key={agent.id} className="border border-border rounded-lg p-4 hover:bg-accent/50 transition-colors">
-                    <div className="flex items-start justify-between mb-2">
-                      <h3 className="font-semibold">{agent.name}</h3>
-                      <Badge variant={agent.status === 'active' ? 'default' : 'secondary'}>
-                        {agent.status}
-                      </Badge>
-                    </div>
-                    <p className="text-sm text-muted-foreground mb-3">{agent.bio}</p>
-                    <div className="flex justify-between text-xs text-muted-foreground">
-                      <span>{agent.conversations} conversations</span>
-                      <span>★ {agent.satisfaction}/5.0</span>
-                    </div>
-                    <div className="flex space-x-2 mt-3">
-                      <Button size="sm" variant="outline" className="flex-1">
-                        <Settings className="h-3 w-3 mr-1" />
-                        Edit
-                      </Button>
-                      <Button size="sm" variant="outline" className="flex-1">
-                        <MessageSquare className="h-3 w-3 mr-1" />
-                        Test
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-
             {/* Quick Stats */}
-            <Card className="mt-6">
+            <Card>
               <CardHeader>
                 <CardTitle>Quick Stats</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex justify-between">
-                  <span className="text-sm">Active Agents</span>
-                  <span className="font-semibold">2</span>
+                  <span className="text-sm">Active Agent</span>
+                  <span className="font-semibold">{activeAgent ? 1 : 0}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-sm">Total Conversations</span>
-                  <span className="font-semibold">230</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm">Avg. Satisfaction</span>
-                  <span className="font-semibold">4.7/5.0</span>
+                  <span className="text-sm">Total Queries</span>
+                  <span className="font-semibold">{agentStats.totalQueries}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-sm">Response Time</span>
-                  <span className="font-semibold">&lt; 1s</span>
+                  <span className="font-semibold">{agentStats.avgResponseTime}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm">Satisfaction</span>
+                  <span className="font-semibold">{agentStats.customerSatisfaction}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm">Network</span>
+                  <span className="font-semibold text-orange-500">Preprod</span>
                 </div>
               </CardContent>
             </Card>
+
+            {/* Wallet Info */}
+            <Card className="mt-6">
+              <CardHeader>
+                <CardTitle className="flex items-center space-x-2">
+                  <Wallet className="h-4 w-4" />
+                  <span>Wallet Status</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="flex justify-between">
+                  <span className="text-sm">Connected</span>
+                  <span className="font-semibold">{walletAddress ? 'Yes' : 'No'}</span>
+                </div>
+                {walletAddress && (
+                  <>
+                    <div className="flex justify-between">
+                      <span className="text-sm">Address</span>
+                      <span className="text-xs font-mono">{formatAddress(walletAddress)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm">Network</span>
+                      <span className="text-orange-500 font-medium">Preprod</span>
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Payment Receipt */}
+            {activeAgent?.paymentReceipt && (
+              <Card className="mt-6">
+                <CardHeader>
+                  <CardTitle className="flex items-center space-x-2">
+                    <CheckCircle className="h-4 w-4 text-green-500" />
+                    <span>Payment Receipt</span>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="flex justify-between">
+                    <span className="text-sm">Amount</span>
+                    <span className="font-semibold">{activeAgent.paymentReceipt.amount}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm">Status</span>
+                    <Badge variant="default" className="bg-green-600">Paid</Badge>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm">Date</span>
+                    <span className="text-xs">{new Date(activeAgent.paymentReceipt.timestamp).toLocaleDateString()}</span>
+                  </div>
+                  <div className="text-xs text-muted-foreground break-all">
+                    TX: {activeAgent.paymentReceipt.txHash}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </div>
         </div>
       </div>
+
+      {/* Agent Selection Modal */}
+      <AgentSelectionModal
+        open={isAgentModalOpen}
+        onOpenChange={setIsAgentModalOpen}
+        onAgentSelected={handleAgentSelected}
+      />
     </div>
   );
 };

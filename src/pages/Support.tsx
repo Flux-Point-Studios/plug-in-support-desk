@@ -8,7 +8,7 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { 
   Bot, Send, User, AlertCircle, Clock, CheckCircle, 
   Smile, Meh, Frown, ThumbsUp, ThumbsDown, X, Plus,
-  TrendingUp, TrendingDown, Minus, PlayCircle, StopCircle
+  TrendingUp, TrendingDown, Minus, PlayCircle, StopCircle, Settings, Zap
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
@@ -28,6 +28,12 @@ import {
   type SentimentType
 } from "@/lib/sentiment-simulator";
 import { sendChatMessage, analyzeMessageSentiment } from "@/lib/chat-service";
+import { 
+  queryMasumiAgent, 
+  getAgentDetails, 
+  type MasumiAgent 
+} from "@/lib/masumi-agent-discovery";
+import { toast } from "sonner";
 
 const Support = () => {
   const navigate = useNavigate();
@@ -40,6 +46,15 @@ const Support = () => {
     issue: ""
   });
   
+  // Masumi agent state
+  const [activeAgent, setActiveAgent] = useState<{
+    agent: MasumiAgent;
+    config: { businessContext: string; documents: File[] };
+    activatedAt: string;
+    paymentReceipt?: any;
+  } | null>(null);
+  const [useMasumiAgent, setUseMasumiAgent] = useState(true);
+  
   // Sentiment tracking
   const [sentimentHistory, setSentimentHistory] = useState<SentimentData[]>([]);
   const [aggregateSentiment, setAggregateSentiment] = useState<{ average: number; trend: 'up' | 'down' | 'stable' }>({ average: 0.75, trend: 'stable' });
@@ -47,16 +62,34 @@ const Support = () => {
   // Simulation controls
   const [simulationScenario, setSimulationScenario] = useState<keyof typeof sentimentScenarios>('balanced');
   const [isSimulating, setIsSimulating] = useState(false);
-  const [useRealAI, setUseRealAI] = useState(true); // Default to real AI
+  const [useRealAI, setUseRealAI] = useState(false); // Default to Masumi
   const simulatorRef = useRef<SentimentSimulator | null>(null);
   
   // Effect to stop simulation when switching to real AI
   useEffect(() => {
-    if (useRealAI && isSimulating) {
+    if ((useRealAI || useMasumiAgent) && isSimulating) {
       simulatorRef.current?.stop();
       setIsSimulating(false);
     }
-  }, [useRealAI, isSimulating]);
+  }, [useRealAI, useMasumiAgent, isSimulating]);
+  
+  // Load active Masumi agent on mount
+  useEffect(() => {
+    loadActiveAgent();
+  }, []);
+  
+  const loadActiveAgent = async () => {
+    try {
+      const savedAgent = localStorage.getItem('masumi-active-agent');
+      if (savedAgent) {
+        const agentData = JSON.parse(savedAgent);
+        setActiveAgent(agentData);
+        toast.success(`Loaded active agent: ${agentData.agent.name}`);
+      }
+    } catch (error) {
+      console.error('Failed to load active agent:', error);
+    }
+  };
   
   // Get current session
   const currentSession = sessions.find(s => s.id === currentSessionId);
@@ -86,13 +119,14 @@ const Support = () => {
   }, [sentimentHistory]);
 
   const startNewSession = () => {
+    const agentName = activeAgent?.agent.name || "AI Support Agent";
     const newSession: ChatSession = {
       id: Date.now().toString(),
       messages: [
         {
           id: '1',
           type: 'bot',
-          content: "Hello! I'm your AI support agent. How can I help you today?",
+          content: `Hello! I'm ${agentName}. How can I help you today?`,
           timestamp: new Date()
         }
       ],
@@ -155,9 +189,74 @@ const Support = () => {
     };
     setSentimentHistory(prev => [...prev, userSentimentData]);
 
-    // Get AI response
-    if (useRealAI) {
-      // Use real AI endpoint
+    // Get AI response based on selected method
+    if (useMasumiAgent && activeAgent) {
+      // Use Masumi agent
+      try {
+        // Add business context to the query if available
+        let contextualQuery = chatMessage;
+        if (activeAgent.config.businessContext) {
+          contextualQuery = `Business Context: ${activeAgent.config.businessContext}\n\nCustomer Question: ${chatMessage}`;
+        }
+
+        // Show loading message
+        const loadingMessage: ChatMessage = {
+          id: (Date.now() + 0.5).toString(),
+          type: "bot",
+          content: "Let me check that for you... (Processing through Masumi network)",
+          timestamp: new Date()
+        };
+
+        setSessions(prev => prev.map(s => 
+          s.id === currentSession.id 
+            ? { ...s, messages: [...s.messages, loadingMessage] }
+            : s
+        ));
+
+        // Query the Masumi agent
+        const response = await queryMasumiAgent(activeAgent.agent, contextualQuery);
+
+        // Replace loading message with actual response
+        const aiResponse: ChatMessage = {
+          id: (Date.now() + 1).toString(),
+          type: "bot",
+          content: response,
+          timestamp: new Date()
+        };
+
+        setSessions(prev => prev.map(s => 
+          s.id === currentSession.id 
+            ? { 
+                ...s, 
+                messages: s.messages.map(msg => 
+                  msg.id === loadingMessage.id ? aiResponse : msg
+                )
+              }
+            : s
+        ));
+
+      } catch (error: any) {
+        console.error('Masumi agent query failed:', error);
+        
+        // Remove loading message and show error
+        const errorResponse: ChatMessage = {
+          id: (Date.now() + 1).toString(),
+          type: "bot",
+          content: `I apologize, but I'm having trouble connecting to the AI agent. Error: ${error.message}. Please try again or submit a support ticket.`,
+          timestamp: new Date()
+        };
+
+        setSessions(prev => prev.map(s => 
+          s.id === currentSession.id 
+            ? { 
+                ...s, 
+                messages: s.messages.filter(msg => msg.id !== (Date.now() + 0.5).toString()).concat(errorResponse)
+              }
+            : s
+        ));
+      }
+    } else if (useRealAI) {
+      // Use real AI endpoint (existing implementation)
       try {
         // Build conversation history
         const previousMessages = currentSession.messages.map(msg => ({
@@ -332,40 +431,85 @@ const Support = () => {
       </header>
 
       <div className="container mx-auto px-4 py-8">
-        {/* Page Header with Simulation Controls */}
+        {/* Page Header with Agent Controls */}
         <div className="mb-8">
           <div className="flex justify-between items-start">
             <div>
               <h1 className="text-4xl font-bold mb-2">Support Portal</h1>
-              <p className="text-muted-foreground">Get instant help or submit a support ticket</p>
+              <p className="text-muted-foreground">Get instant help from our AI agent</p>
+              {activeAgent && (
+                <div className="mt-2 flex items-center space-x-2">
+                  <Badge variant="outline" className="text-xs">
+                    <Bot className="h-3 w-3 mr-1" />
+                    {activeAgent.agent.name}
+                  </Badge>
+                  <Badge variant="secondary" className="text-xs">
+                    Masumi Network
+                  </Badge>
+                </div>
+              )}
             </div>
-            {/* Simulation Controls */}
+            {/* AI Mode Controls */}
             <Card className="w-96">
               <CardHeader className="pb-3">
-                <CardTitle className="text-lg">AI & Simulation Controls</CardTitle>
+                <CardTitle className="text-lg">AI Agent Controls</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                {/* Real AI Toggle */}
+                {/* Masumi Agent Toggle */}
                 <div className="flex items-center justify-between">
                   <div>
-                    <Label htmlFor="real-ai-toggle" className="font-medium">Use Real AI</Label>
-                    <p className="text-xs text-muted-foreground">Connect to Flux Point Studios API</p>
+                    <Label htmlFor="masumi-toggle" className="font-medium">Use Masumi Agent</Label>
+                    <p className="text-xs text-muted-foreground">
+                      {activeAgent ? `Using: ${activeAgent.agent.name}` : 'No agent configured'}
+                    </p>
+                  </div>
+                  <Switch
+                    id="masumi-toggle"
+                    checked={useMasumiAgent}
+                    onCheckedChange={setUseMasumiAgent}
+                    disabled={!activeAgent}
+                  />
+                </div>
+
+                {!activeAgent && (
+                  <div className="p-3 bg-orange-50 dark:bg-orange-950/20 rounded-lg border border-orange-200 dark:border-orange-800">
+                    <p className="text-xs text-orange-700 dark:text-orange-300 mb-2">
+                      No Masumi agent configured yet.
+                    </p>
+                    <Button 
+                      size="sm" 
+                      variant="outline" 
+                      onClick={() => navigate('/dashboard')}
+                      className="w-full"
+                    >
+                      <Settings className="h-3 w-3 mr-1" />
+                      Configure Agent
+                    </Button>
+                  </div>
+                )}
+                
+                {/* Fallback AI Toggle */}
+                <div className={`flex items-center justify-between ${useMasumiAgent ? 'opacity-50' : ''}`}>
+                  <div>
+                    <Label htmlFor="real-ai-toggle" className="font-medium">Use Fallback AI</Label>
+                    <p className="text-xs text-muted-foreground">Flux Point Studios API</p>
                   </div>
                   <Switch
                     id="real-ai-toggle"
                     checked={useRealAI}
                     onCheckedChange={setUseRealAI}
+                    disabled={useMasumiAgent}
                   />
                 </div>
                 
                 {/* Simulation Options */}
-                <div className={`space-y-3 ${useRealAI ? 'opacity-50' : ''}`}>
+                <div className={`space-y-3 ${(useRealAI || useMasumiAgent) ? 'opacity-50' : ''}`}>
                   <Label className="text-sm font-medium">Simulation Options</Label>
                   <div className="flex items-center space-x-2">
                     <Select 
                       value={simulationScenario} 
                       onValueChange={(value) => setSimulationScenario(value as keyof typeof sentimentScenarios)}
-                      disabled={useRealAI}
+                      disabled={useRealAI || useMasumiAgent}
                     >
                       <SelectTrigger className="flex-1">
                         <SelectValue />
@@ -382,7 +526,7 @@ const Support = () => {
                       size="sm" 
                       variant={isSimulating ? "destructive" : "default"}
                       onClick={toggleSimulation}
-                      disabled={useRealAI}
+                      disabled={useRealAI || useMasumiAgent}
                     >
                       {isSimulating ? (
                         <>
@@ -397,7 +541,7 @@ const Support = () => {
                       )}
                     </Button>
                   </div>
-                  {!useRealAI && (
+                  {!(useRealAI || useMasumiAgent) && (
                     <p className="text-xs text-muted-foreground">
                       {sentimentScenarios[simulationScenario].description}
                     </p>
@@ -418,9 +562,16 @@ const Support = () => {
                   <CardTitle className="flex items-center space-x-2">
                     <Bot className="h-5 w-5 text-blue-500" />
                     <span>AI Support Chat</span>
-                    <Badge variant="secondary">Live</Badge>
+                    <Badge variant="secondary">
+                      {useMasumiAgent ? 'Masumi' : useRealAI ? 'Live' : 'Demo'}
+                    </Badge>
                   </CardTitle>
-                  <CardDescription>Get instant answers from our AI agent</CardDescription>
+                  <CardDescription>
+                    {useMasumiAgent && activeAgent 
+                      ? `Powered by ${activeAgent.agent.name} on Masumi`
+                      : 'Get instant answers from our AI agent'
+                    }
+                  </CardDescription>
                 </div>
                 <div className="flex items-center space-x-2">
                   <Select 
@@ -504,7 +655,58 @@ const Support = () => {
             </CardContent>
           </Card>
 
-          {/* Middle Column - Ticket Form */}
+          {/* Middle Column - Sentiment Analysis */}
+          <Card className="flex flex-col">
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                {getSentimentIcon(aggregateSentiment.average)}
+                <span>Real-time Sentiment</span>
+                {getTrendIcon(aggregateSentiment.trend)}
+              </CardTitle>
+              <CardDescription>Customer satisfaction tracking</CardDescription>
+            </CardHeader>
+            <CardContent className="flex-1">
+              <div className="space-y-4">
+                {/* Aggregate Sentiment */}
+                <div>
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-sm font-medium">Overall Score</span>
+                    <span className="text-2xl font-bold">
+                      {(aggregateSentiment.average * 100).toFixed(0)}%
+                    </span>
+                  </div>
+                  <div className="w-full bg-muted rounded-full h-2">
+                    <div
+                      className={`h-2 rounded-full transition-all duration-300 ${getSentimentColor(aggregateSentiment.average)}`}
+                      style={{ width: `${aggregateSentiment.average * 100}%` }}
+                    />
+                  </div>
+                </div>
+
+                {/* Recent Sentiment History */}
+                <div>
+                  <h4 className="text-sm font-medium mb-3">Recent Activity</h4>
+                  <ScrollArea className="h-48">
+                    <div className="space-y-2">
+                      {sentimentHistory.slice(-10).reverse().map((entry, index) => (
+                        <div key={index} className="flex items-center justify-between p-2 bg-muted/50 rounded">
+                          <div className="flex items-center space-x-2">
+                            {getSentimentIcon(entry.score)}
+                            <span className="text-xs">{entry.label}</span>
+                          </div>
+                          <span className="text-xs text-muted-foreground">
+                            {entry.timestamp.toLocaleTimeString()}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Right Column - Support Ticket Form */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center space-x-2">
@@ -516,32 +718,34 @@ const Support = () => {
             <CardContent>
               <form onSubmit={handleTicketSubmit} className="space-y-4">
                 <div>
-                  <Label htmlFor="ticket-name">Your Name</Label>
+                  <Label htmlFor="name">Your Name</Label>
                   <Input
-                    id="ticket-name"
+                    id="name"
+                    placeholder="Enter your full name"
                     value={ticketForm.name}
-                    onChange={(e) => setTicketForm(prev => ({ ...prev, name: e.target.value }))}
+                    onChange={(e) => setTicketForm({ ...ticketForm, name: e.target.value })}
                     required
                   />
                 </div>
                 <div>
-                  <Label htmlFor="ticket-email">Email Address</Label>
+                  <Label htmlFor="email">Email Address</Label>
                   <Input
-                    id="ticket-email"
+                    id="email"
                     type="email"
+                    placeholder="your.email@example.com"
                     value={ticketForm.email}
-                    onChange={(e) => setTicketForm(prev => ({ ...prev, email: e.target.value }))}
+                    onChange={(e) => setTicketForm({ ...ticketForm, email: e.target.value })}
                     required
                   />
                 </div>
                 <div>
-                  <Label htmlFor="ticket-issue">Describe Your Issue</Label>
+                  <Label htmlFor="issue">Describe Your Issue</Label>
                   <Textarea
-                    id="ticket-issue"
-                    rows={6}
-                    placeholder="Please provide as much detail as possible about your issue..."
+                    id="issue"
+                    placeholder="Please provide details about your issue..."
                     value={ticketForm.issue}
-                    onChange={(e) => setTicketForm(prev => ({ ...prev, issue: e.target.value }))}
+                    onChange={(e) => setTicketForm({ ...ticketForm, issue: e.target.value })}
+                    rows={4}
                     required
                   />
                 </div>
@@ -549,137 +753,15 @@ const Support = () => {
                   Submit Ticket
                 </Button>
               </form>
-
-              {/* Recent Tickets */}
-              <div className="mt-6">
-                <h3 className="font-semibold mb-3">Recent Tickets</h3>
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between p-2 border border-border rounded">
-                    <div className="flex items-center space-x-2">
-                      <CheckCircle className="h-4 w-4 text-green-500" />
-                      <span className="text-sm">#1001 - Login Issue</span>
-                    </div>
-                    <Badge variant="outline">Resolved</Badge>
-                  </div>
-                  <div className="flex items-center justify-between p-2 border border-border rounded">
-                    <div className="flex items-center space-x-2">
-                      <Clock className="h-4 w-4 text-yellow-500" />
-                      <span className="text-sm">#1002 - Feature Request</span>
-                    </div>
-                    <Badge variant="secondary">Pending</Badge>
-                  </div>
-                </div>
-              </div>
             </CardContent>
           </Card>
+        </div>
 
-          {/* Right Column - Sentiment & Analytics */}
-          <div className="space-y-6 overflow-y-auto">
-            {/* Live Sentiment */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
-                  {getSentimentIcon(aggregateSentiment.average)}
-                  <span>Live Sentiment</span>
-                  {getTrendIcon(aggregateSentiment.trend)}
-                </CardTitle>
-                <CardDescription>Real-time customer satisfaction monitoring</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="text-center">
-                  <div className="relative w-32 h-32 mx-auto mb-4">
-                    <svg className="transform -rotate-90 w-32 h-32">
-                      <circle
-                        cx="64"
-                        cy="64"
-                        r="56"
-                        stroke="currentColor"
-                        strokeWidth="8"
-                        fill="transparent"
-                        className="text-muted"
-                      />
-                      <circle
-                        cx="64"
-                        cy="64"
-                        r="56"
-                        stroke="currentColor"
-                        strokeWidth="8"
-                        fill="transparent"
-                        strokeDasharray={`${aggregateSentiment.average * 351.86} 351.86`}
-                        className={getSentimentColor(aggregateSentiment.average).replace('bg-', 'text-')}
-                      />
-                    </svg>
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <span className="text-2xl font-bold">{Math.round(aggregateSentiment.average * 100)}%</span>
-                    </div>
-                  </div>
-                  <p className="text-lg font-semibold">
-                    {aggregateSentiment.average >= 0.7 ? 'Positive' : 
-                     aggregateSentiment.average >= 0.4 ? 'Neutral' : 'Negative'}
-                  </p>
-                  <p className="text-sm text-muted-foreground">Customer Satisfaction</p>
-                  <div className="mt-2 text-xs text-muted-foreground">
-                    <p>Data points: {sentimentHistory.length}</p>
-                    <p>Trend: {aggregateSentiment.trend}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Chat History */}
-            <ChatHistory sessions={sessions} />
-
-            {/* Analytics Overview */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Analytics Overview</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex justify-between">
-                  <span className="text-sm">Today's Conversations</span>
-                  <span className="font-semibold">{sessions.length}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm">Resolution Rate</span>
-                  <span className="font-semibold">
-                    {sessions.filter(s => !s.isActive && s.overallSentiment >= 0.7).length > 0
-                      ? Math.round((sessions.filter(s => !s.isActive && s.overallSentiment >= 0.7).length / 
-                          sessions.filter(s => !s.isActive).length) * 100) || 0
-                      : 0}%
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm">Avg. Response Time</span>
-                  <span className="font-semibold">0.8s</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm">Active Agents</span>
-                  <span className="font-semibold">2</span>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* System Status */}
-            <Card>
-              <CardHeader>
-                <CardTitle>System Status</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm">AI Service</span>
-                  <Badge className="bg-green-500">Online</Badge>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm">Database</span>
-                  <Badge className="bg-green-500">Healthy</Badge>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm">API</span>
-                  <Badge className="bg-green-500">Operational</Badge>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+        {/* Bottom Section - Chat History */}
+        <div className="mt-8">
+          <ChatHistory 
+            sessions={sessions.filter(s => !s.isActive)} 
+          />
         </div>
       </div>
     </div>

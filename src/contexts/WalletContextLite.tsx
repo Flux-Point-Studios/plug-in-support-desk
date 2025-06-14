@@ -96,26 +96,81 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         throw new Error("Failed to connect to wallet. Please try again.");
       }
 
-      // Get the used addresses
-      const usedAddresses = await api.getUsedAddresses();
-      if (!usedAddresses || usedAddresses.length === 0) {
-        throw new Error("No addresses found in wallet");
-      }
-
-      // Get first address and convert from hex to bech32
-      const addressHex = usedAddresses[0];
+      // Try to get addresses - first used, then unused as fallback
+      let addresses = [];
+      let addressHex = null;
       
-      // For now, use a simplified approach - we'll display the bech32 if available, otherwise hex
-      let displayAddress = addressHex;
       try {
-        // Try to get bech32 address if the wallet supports it
-        const rewardAddresses = await api.getRewardAddresses();
-        if (rewardAddresses && rewardAddresses.length > 0) {
-          // Use a more readable format
-          displayAddress = `addr1...${addressHex.slice(-20)}`;
+        // First try to get used addresses (addresses that have received transactions)
+        const usedAddresses = await api.getUsedAddresses();
+        if (usedAddresses && usedAddresses.length > 0) {
+          addresses = usedAddresses;
+          addressHex = usedAddresses[0];
+          console.log(`Found ${usedAddresses.length} used addresses`);
         }
       } catch (e) {
-        // Fallback to simplified hex display
+        console.warn("Failed to get used addresses:", e);
+      }
+
+      // If no used addresses, try unused addresses (fresh receiving addresses)
+      if (!addressHex) {
+        try {
+          const unusedAddresses = await api.getUnusedAddresses();
+          if (unusedAddresses && unusedAddresses.length > 0) {
+            addresses = unusedAddresses;
+            addressHex = unusedAddresses[0];
+            console.log(`Using unused address (wallet has no transaction history)`);
+          }
+        } catch (e) {
+          console.warn("Failed to get unused addresses:", e);
+        }
+      }
+
+      // If still no address, try change addresses as last resort
+      if (!addressHex) {
+        try {
+          const changeAddresses = await api.getChangeAddress();
+          if (changeAddresses) {
+            addressHex = changeAddresses;
+            console.log(`Using change address as fallback`);
+          }
+        } catch (e) {
+          console.warn("Failed to get change address:", e);
+        }
+      }
+
+      // If we still don't have an address, the wallet might be empty or incompatible
+      if (!addressHex) {
+        throw new Error(
+          `No addresses found in wallet. Please ensure your ${walletKey} wallet is properly set up with at least one address. ` +
+          `On Preprod testnet, you can get test ADA from the faucet at https://docs.cardano.org/cardano-testnet/tools/faucet/`
+        );
+      }
+
+      // Create a readable display address
+      let displayAddress = addressHex;
+      
+      try {
+        // Try to create a more user-friendly display format
+        if (addressHex.startsWith('01') || addressHex.startsWith('00')) {
+          // Looks like a proper Cardano address in hex
+          displayAddress = `addr1...${addressHex.slice(-12)}`;
+        } else if (addressHex.length > 40) {
+          // Long hex string, truncate for display
+          displayAddress = `${walletKey}_${addressHex.slice(0, 12)}...${addressHex.slice(-12)}`;
+        }
+        
+        // Try to get stake/reward addresses for more info (optional)
+        try {
+          const rewardAddresses = await api.getRewardAddresses();
+          if (rewardAddresses && rewardAddresses.length > 0) {
+            console.log(`Wallet has ${rewardAddresses.length} reward addresses (staking enabled)`);
+          }
+        } catch (e) {
+          // Not critical if this fails
+        }
+      } catch (e) {
+        // If display formatting fails, use a simple fallback
         displayAddress = `${walletKey}_${addressHex.slice(0, 20)}...${addressHex.slice(-20)}`;
       }
 
@@ -135,16 +190,20 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       localStorage.setItem('paymentKeyHash', addressHex.slice(0, 56));
       
       console.log(`Successfully connected to ${walletKey} wallet on Preprod network`);
+      console.log(`Address: ${displayAddress}`);
       
       // Verify network (optional check)
       try {
         const networkId = await api.getNetworkId();
         if (networkId !== 0) { // 0 = Preprod, 1 = Mainnet
-          console.warn(`Wallet is on network ${networkId}, expected Preprod (0)`);
-          // Don't throw error, just warn
+          console.warn(`⚠️  Wallet is on network ${networkId === 1 ? 'Mainnet' : 'Unknown'}, but app expects Preprod (testnet)`);
+          // Don't throw error, just warn - let user proceed
+        } else {
+          console.log(`✅ Confirmed wallet is on Preprod testnet`);
         }
       } catch (e) {
         // Network check not critical
+        console.warn("Could not verify network:", e);
       }
       
     } catch (err: any) {

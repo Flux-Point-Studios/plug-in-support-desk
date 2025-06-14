@@ -56,7 +56,7 @@ export interface AgentInputSchema {
 
 export interface StartJobResponse {
   job_id: string;
-  payment_id: string;
+  payment_id?: string; // MIP-003 legacy field name
   paymentIdentifier?: string; // The payment address from Masumi
   lovelaceAmount?: string; // The amount to pay
   jobIdentifier?: string; // Alternative name for job_id
@@ -247,9 +247,11 @@ export async function startAgentJob(
   try {
     const cleanUrl = `${apiBaseUrl}/start_job`.replace(/([^:]\/)\/+/g, "$1");
     
+    // Convert inputData to the array format expected by agents
+    const input_data = Object.entries(inputData).map(([key, value]) => ({ key, value }));
+    
     const jobData = {
-      input_data: inputData,
-      identifier_from_purchaser: `job_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`
+      input_data
     };
 
     console.log('Starting agent job at:', cleanUrl);
@@ -257,7 +259,34 @@ export async function startAgentJob(
 
     const response = await proxyAgentRequest(cleanUrl, 'POST', jobData);
     console.log('Job started successfully:', response);
-    return response;
+    
+    // Extract job ID (handle different field names)
+    const jobId = response.job_id || response.jobIdentifier;
+    if (!jobId) {
+      throw new Error('No job_id returned from agent');
+    }
+
+    // Extract payment identifier (handle both modern and legacy MIP-003 field names)
+    const paymentIdentifier = response.paymentIdentifier || response.payment_id;
+    if (!paymentIdentifier) {
+      throw new Error('No payment identifier returned from agent');
+    }
+
+    // Get amount - either from response or from Payment Service
+    let lovelaceAmount = response.lovelaceAmount;
+    if (!lovelaceAmount) {
+      console.log('Amount not returned by agent, fetching from Payment Service...');
+      lovelaceAmount = await getAmountFromPaymentService(paymentIdentifier);
+    }
+    
+    // Return the response with normalized field names
+    return {
+      job_id: jobId,
+      payment_id: paymentIdentifier, // For legacy compatibility
+      paymentIdentifier,
+      lovelaceAmount,
+      jobIdentifier: jobId
+    };
   } catch (error: any) {
     console.error('Failed to start agent job:', error);
     throw new Error(`Job initiation failed: ${error.message}`);
@@ -518,7 +547,7 @@ export async function queryMasumiAgent(
     const jobResponse = await startAgentJob(agent.apiBaseUrl, inputData);
 
     // 5. Complete payment (with wallet support)
-    const paymentResult = await completePayment(agent, jobResponse.payment_id, inputData, {
+    const paymentResult = await completePayment(agent, jobResponse.job_id, inputData, {
       ...options,
       paymentIdentifier: jobResponse.paymentIdentifier,
       lovelaceAmount: jobResponse.lovelaceAmount
@@ -573,5 +602,41 @@ export async function getBestSupportAgent(): Promise<MasumiAgent | null> {
   } catch (error: any) {
     console.error('Failed to get best support agent:', error);
     return null;
+  }
+}
+
+/**
+ * Fetch payment amount from Masumi Payment Service when agent doesn't return it
+ */
+async function getAmountFromPaymentService(
+  paymentIdentifier: string,
+  network: string = 'Preprod'
+): Promise<string> {
+  try {
+    const response = await fetch(PROXY_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        endpoint: `payment?network=${network}&paymentIdentifier=${encodeURIComponent(paymentIdentifier)}`
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to get payment details: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const requestedFunds = data.data?.RequestedFunds?.[0];
+    
+    if (!requestedFunds?.amount) {
+      throw new Error('No payment amount found in Payment Service response');
+    }
+
+    return requestedFunds.amount;
+  } catch (error: any) {
+    console.error('Failed to get amount from Payment Service:', error);
+    throw new Error(`Payment amount retrieval failed: ${error.message}`);
   }
 } 

@@ -44,6 +44,7 @@ import { useWallet } from "@/contexts/WalletContext";
 import { 
   discoverAgents, 
   findSupportAgents, 
+  startAgentJob,
   type MasumiAgent 
 } from "@/lib/masumi-agent-discovery";
 import { buildMasumiPaymentTx, checkSufficientBalance, waitForTxConfirmation } from '@/lib/masumi-transaction-builder';
@@ -188,29 +189,35 @@ export function AgentSelectionModal({ open, onOpenChange, onAgentSelected }: Age
       // Check if real payment is needed
       const price = getPriceDisplay(selectedAgent);
       let needsPayment = price.ada > 0 && !isAdmin;
+      let jobId: string | undefined;
+      let paymentIdentifier: string | undefined;
+      let lovelaceAmount: string | undefined;
 
       if (needsPayment && lucid) {
         // Use real transaction
         try {
-          toast.info("Preparing Cardano transaction...");
+          toast.info("Starting job with agent...");
           
-          // Get payment info
-          const paymentInfo = selectedAgent.PaymentIdentifier?.find(p => p.paymentType === 'Web3CardanoV1');
-          if (!paymentInfo) {
-            throw new Error('No payment information found for agent');
-          }
+          // 1. Start job to get payment details
+          const inputData: Record<string, string> = {
+            // Use generic input that works with most agents
+            text: businessContext,
+            query: businessContext,
+            website_description: businessContext,
+            message: businessContext
+          };
 
-          // For demo purposes, use a fixed payment identifier
-          // In production, this would come from the /start_job response
-          const paymentIdentifier = `addr_test1_agent_${selectedAgent.agentIdentifier.substring(0, 20)}`;
+          const jobResponse = await startAgentJob(selectedAgent.apiBaseUrl, inputData);
+          jobId = jobResponse.job_id;
+          paymentIdentifier = jobResponse.paymentIdentifier;
+          lovelaceAmount = jobResponse.lovelaceAmount;
           
-          // Get payment amount
-          const priceInfo = selectedAgent.AgentPricing.FixedPricing?.Amounts?.[0];
-          const lovelaceAmount = BigInt(priceInfo?.amount || '1000000');
+          toast.info(`Job started: ${jobId.substring(0, 8)}...`);
           
-          // Check balance
+          // 2. Check balance
           toast.info("Checking wallet balance...");
-          const balanceCheck = await checkSufficientBalance(lucid, lovelaceAmount);
+          const lovelaceAmountBigInt = BigInt(lovelaceAmount);
+          const balanceCheck = await checkSufficientBalance(lucid, lovelaceAmountBigInt);
           
           if (!balanceCheck.sufficient) {
             const adaRequired = Number(balanceCheck.required) / 1_000_000;
@@ -218,17 +225,18 @@ export function AgentSelectionModal({ open, onOpenChange, onAgentSelected }: Age
             throw new Error(`Insufficient balance. Need: ${adaRequired} ADA, have: ${adaAvailable} ADA`);
           }
 
-          // Build and submit transaction
+          // 3. Build and submit transaction
           toast.info("Building transaction...");
-          const txHash = await buildMasumiPaymentTx(lucid, paymentIdentifier, lovelaceAmount, {
+          const txHash = await buildMasumiPaymentTx(lucid, paymentIdentifier, lovelaceAmountBigInt, {
             agentId: selectedAgent.agentIdentifier,
+            jobId,
             businessContext: businessContext.substring(0, 64), // Limit metadata size
             timestamp: new Date().toISOString()
           });
 
           toast.success(`Transaction submitted! Hash: ${txHash.substring(0, 8)}...`);
           
-          // Wait for confirmation
+          // 4. Wait for confirmation
           toast.info("Waiting for confirmation...");
           const confirmed = await waitForTxConfirmation(lucid, txHash);
           
@@ -239,7 +247,9 @@ export function AgentSelectionModal({ open, onOpenChange, onAgentSelected }: Age
           // Store real payment receipt
           const paymentReceipt = {
             agentId: selectedAgent.agentIdentifier,
+            jobId,
             amount: price.display,
+            lovelaceAmount,
             timestamp: new Date().toISOString(),
             txHash,
             network: 'Preprod',
